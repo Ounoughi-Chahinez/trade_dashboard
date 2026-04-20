@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trade Forecast Explorer</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --card-2: #f9fafb;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --shadow: 0 10px 30px rgba(17, 24, 39, 0.06);
+      --radius: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: radial-gradient(circle at top left, #eef4ff 0%, #f5f7fb 35%, #f5f7fb 100%);
+      color: var(--text);
+    }
+
+    .page {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 100%);
+      color: white;
+      border-radius: 24px;
+      padding: 28px 30px;
+      margin-bottom: 22px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -60px;
+      top: -60px;
+      width: 220px;
+      height: 220px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 50%;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.1;
+      font-weight: 800;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .badge {
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: white;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      backdrop-filter: blur(6px);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .controls-card {
+      padding: 20px;
+      position: sticky;
+      top: 20px;
+    }
+
+    .section-title {
+      margin: 0 0 6px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .section-subtitle {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .control {
+      margin-bottom: 14px;
+    }
+
+    .control label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    select {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: white;
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+    }
+
+    .button-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+      margin-bottom: 16px;
+    }
+
+    button {
+      flex: 1;
+      min-height: 44px;
+      border: none;
+      border-radius: 12px;
+      background: var(--accent);
+      color: white;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover {
+      opacity: 0.96;
+    }
+
+    .secondary-btn {
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    .status-box {
+      background: var(--card-2);
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .checkbox-group {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 12px;
+      background: var(--card-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .check-item input {
+      transform: scale(1.05);
+    }
+
+    .helper-text {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .chart-card {
+      padding: 18px;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .chart-title-wrap h2 {
+      margin: 0 0 4px;
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .chart-title-wrap p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .chart-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .meta-chip {
+      background: #f3f4f6;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: #374151;
+      font-weight: 600;
+    }
+
+    #chart {
+      min-height: 700px;
+      width: 100%;
+    }
+
+    .methodology-card {
+      margin-top: 14px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .methodology-card h3 {
+      margin: 0 0 8px;
+      color: var(--text);
+      font-size: 16px;
+    }
+
+    .methodology-card p {
+      margin: 0 0 10px;
+    }
+
+    .loading {
+      padding: 40px 10px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 980px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .controls-card {
+        position: static;
+      }
+
+      .hero h1 {
+        font-size: 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>Trade Forecast Explorer</h1>
+      <div class="hero-badges">
+        <span class="badge">Historical BACI</span>
+        <span class="badge">WB-Anchored SSP2 Forecast</span>
+        <span class="badge">Random Forest Projection</span>
+      </div>
+    </section>
+
+    <div class="grid">
+      <aside class="card controls-card">
+        <h2 class="section-title">Filters</h2>
+        <p class="section-subtitle">
+          Choose exporter, importer, and product, then update the chart.
+        </p>
+
+        <div class="control">
+          <label for="exporter">Exporter</label>
+          <select id="exporter"></select>
+        </div>
+
+        <div class="control">
+          <label for="importer">Importer</label>
+          <select id="importer"></select>
+        </div>
+
+        <div class="control">
+          <label for="product">Product (HS6)</label>
+          <select id="product"></select>
+        </div>
+
+        <div class="control">
+          <label>Optional indicator overlays</label>
+          <div class="checkbox-group">
+            <label class="check-item">
+              <input type="checkbox" id="indGDP" value="gdp" />
+              <span>GDP</span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" id="indGDPCAP" value="gdpcap" />
+              <span>GDP per capita</span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" id="indPOP" value="pop" />
+              <span>Population</span>
+            </label>
+          </div>
+          <div class="helper-text">
+            <strong>All</strong> represents the average across countries by year.
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button id="updateBtn">Update</button>
+          <button id="resetBtn" class="secondary-btn">Reset</button>
+        </div>
+
+        <div id="status" class="status-box">Ready.</div>
+      </aside>
+
+      <main class="card chart-card">
+        <div class="chart-header">
+          <div class="chart-title-wrap">
+            <h2>Trade series</h2>
+            <p>Historical trade compared against the corrected forecast path, with optional macro overlays.</p>
+          </div>
+
+          <div class="chart-meta">
+            <div class="meta-chip">Black: Historical trade</div>
+            <div class="meta-chip">Blue: Corrected forecast</div>
+            <div class="meta-chip">Dashed / dotted: Indicators</div>
+          </div>
+        </div>
+
+        <div id="chart">
+          <div class="loading">Loading chart...</div>
+        </div>
+
+        <div class="methodology-card">
+          <h3>Methodology overview</h3>
+          <p>
+            Historical trade values are taken from BACI. The forecasting model is a Random Forest
+            trained on data from <strong>2012 to 2024</strong>, using bilateral trade together with
+            exporter and importer macro features, bilateral distance, and HS6 product information.
+          </p>
+          <p>
+            Future macro features are based on SSP2 trajectories and were aligned to observed
+            World Bank levels using a country-specific ratio anchoring approach. The anchor
+            year is <strong>2015</strong>, and the monetary variables are expressed in
+            <strong>constant 2015 USD</strong>.
+          </p>
+          <p>
+            For each country, a correction factor was computed as the ratio between the World Bank
+            level and the SSP2 level at the anchor year, and this factor was then applied to the
+            future SSP2 trajectory. This preserves the SSP2 time profile while aligning the level
+            with the observed World Bank baseline.
+          </p>
+          <p>
+            Future forecasts are displayed at a <strong>5-year frequency</strong>. The chart therefore
+            combines historical BACI observations with Random Forest forecasts generated from the
+            corrected macroeconomic feature path.
+          </p>
+          <p>
+            Optional indicator overlays are drawn from the separate features file. For a selected
+            country, the dashboard displays that country's series. When exporter or importer is set
+            to <strong>All</strong>, the dashboard uses the average indicator value across countries
+            for each year.
+          </p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const META_PATH = "trade_dashboard_meta.json";
+    const SMALL_PATH = "trade_dashboard_small.json";
+    const FEATURES_PATH = "features.csv";
+    const FLOW_BASE_PATH = "data/flows";
+
+    let META = null;
+    let SMALL = null;
+    let FEATURES = [];
+    let FEATURE_AVG_BY_YEAR = [];
+    let COUNTRY_FEATURES = {};
+
+    const exporterEl = document.getElementById("exporter");
+    const importerEl = document.getElementById("importer");
+    const productEl = document.getElementById("product");
+    const statusEl = document.getElementById("status");
+    const updateBtn = document.getElementById("updateBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    const indGDPEl = document.getElementById("indGDP");
+    const indGDPCAPEl = document.getElementById("indGDPCAP");
+    const indPOPPEl = document.getElementById("indPOP");
+
+    function setStatus(message) {
+      statusEl.innerHTML = message;
+    }
+
+    function populateSimpleSelect(selectEl, values) {
+      selectEl.innerHTML = "";
+      values.forEach((v) => {
+        const option = document.createElement("option");
+        option.value = v;
+        option.textContent = v;
+        selectEl.appendChild(option);
+      });
+    }
+
+    function populateProductSelect(selectEl, products) {
+      selectEl.innerHTML = "";
+      products.forEach((p) => {
+        const option = document.createElement("option");
+        option.value = p.k;
+        option.textContent = p.label;
+        selectEl.appendChild(option);
+      });
+    }
+
+    function initDropdowns() {
+      populateSimpleSelect(exporterEl, META.exporters || ["All"]);
+      populateSimpleSelect(importerEl, META.importers || ["All"]);
+      populateProductSelect(productEl, META.products || [{ k: "All", label: "All" }]);
+
+      exporterEl.value = "All";
+      importerEl.value = "All";
+      productEl.value = "All";
+    }
+
+    function parseCSVLine(line) {
+      const result = [];
+      let current = "";
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const next = line[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && next === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === "," && !inQuotes) {
+          result.push(current);
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+
+      result.push(current);
+      return result;
+    }
+
+    function csvToObjects(text) {
+      const lines = text.trim().split(/\r?\n/);
+      if (!lines.length) return [];
+
+      const headers = parseCSVLine(lines[0]).map(h => h.trim());
+
+      return lines.slice(1).map(line => {
+        const values = parseCSVLine(line);
+        const obj = {};
+        headers.forEach((h, i) => {
+          obj[h] = (values[i] ?? "").trim();
+        });
+        return obj;
+      });
+    }
+
+    function safeNum(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function buildFeatureIndexes(rows) {
+      const avgMap = {};
+      const countryMap = {};
+
+      rows.forEach(r => {
+        const country = (r.country_iso3 || "").trim();
+        const year = Number(r.t);
+
+        if (!country || !Number.isFinite(year)) return;
+
+        const row = {
+          country_iso3: country,
+          t: year,
+          gdp: safeNum(r.gdp),
+          gdpcap: safeNum(r.gdpcap),
+          pop: safeNum(r.pop),
+          source: r.source || ""
+        };
+
+        if (!countryMap[country]) countryMap[country] = [];
+        countryMap[country].push(row);
+
+        if (!avgMap[year]) {
+          avgMap[year] = {
+            t: year,
+            gdp_sum: 0, gdp_n: 0,
+            gdpcap_sum: 0, gdpcap_n: 0,
+            pop_sum: 0, pop_n: 0
+          };
+        }
+
+        if (row.gdp !== null) {
+          avgMap[year].gdp_sum += row.gdp;
+          avgMap[year].gdp_n += 1;
+        }
+        if (row.gdpcap !== null) {
+          avgMap[year].gdpcap_sum += row.gdpcap;
+          avgMap[year].gdpcap_n += 1;
+        }
+        if (row.pop !== null) {
+          avgMap[year].pop_sum += row.pop;
+          avgMap[year].pop_n += 1;
+        }
+      });
+
+      Object.keys(countryMap).forEach(country => {
+        countryMap[country].sort((a, b) => a.t - b.t);
+      });
+
+      const avgSeries = Object.values(avgMap)
+        .map(d => ({
+          t: d.t,
+          gdp: d.gdp_n ? d.gdp_sum / d.gdp_n : null,
+          gdpcap: d.gdpcap_n ? d.gdpcap_sum / d.gdpcap_n : null,
+          pop: d.pop_n ? d.pop_sum / d.pop_n : null
+        }))
+        .sort((a, b) => a.t - b.t);
+
+      return { avgSeries, countryMap };
+    }
+
+    function compactToTradeHist(series) {
+      if (!series || !Array.isArray(series.y) || !Array.isArray(series.v)) return [];
+      return series.y.map((year, idx) => ({
+        t: Number(year),
+        value: Number(series.v[idx])
+      }));
+    }
+
+    function compactToTradeCorr(series) {
+      if (!series || !Array.isArray(series.y) || !Array.isArray(series.v)) return [];
+      return series.y.map((year, idx) => ({
+        t: Number(year),
+        pred_v2015: Number(series.v[idx])
+      }));
+    }
+
+    function addConnector(hist, pred) {
+      if (!hist.length) return pred;
+      const last = hist[hist.length - 1];
+      if (pred.length && Number(pred[0].t) === Number(last.t)) return pred;
+      return [{ t: last.t, pred_v2015: last.value }, ...pred];
+    }
+
+    async function loadBaseData() {
+      const [metaRes, smallRes, featuresRes] = await Promise.all([
+        fetch(META_PATH),
+        fetch(SMALL_PATH),
+        fetch(FEATURES_PATH)
+      ]);
+
+      if (!metaRes.ok || !smallRes.ok || !featuresRes.ok) {
+        throw new Error("Base files are missing.");
+      }
+
+      META = await metaRes.json();
+      SMALL = await smallRes.json();
+
+      const featuresText = await featuresRes.text();
+      FEATURES = csvToObjects(featuresText);
+
+      const indexes = buildFeatureIndexes(FEATURES);
+      FEATURE_AVG_BY_YEAR = indexes.avgSeries;
+      COUNTRY_FEATURES = indexes.countryMap;
+    }
+
+    async function loadPairFile(exporter, importer) {
+      const url = `${FLOW_BASE_PATH}/${exporter}/${importer}.json`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return await res.json();
+    }
+
+    function getSummarySeries(exporter, importer, product) {
+      let hist = [];
+      let corr = [];
+
+      if (exporter === "All" && importer === "All" && product === "All") {
+        hist = compactToTradeHist(SMALL.global?.hist);
+        corr = compactToTradeCorr(SMALL.global?.corr);
+      } else if (exporter !== "All" && importer === "All" && product === "All") {
+        hist = compactToTradeHist(SMALL.exporter?.hist?.[exporter]);
+        corr = compactToTradeCorr(SMALL.exporter?.corr?.[exporter]);
+      } else if (exporter === "All" && importer !== "All" && product === "All") {
+        hist = compactToTradeHist(SMALL.importer?.hist?.[importer]);
+        corr = compactToTradeCorr(SMALL.importer?.corr?.[importer]);
+      } else if (exporter === "All" && importer === "All" && product !== "All") {
+        hist = compactToTradeHist(SMALL.product?.hist?.[String(product)]);
+        corr = compactToTradeCorr(SMALL.product?.corr?.[String(product)]);
+      }
+
+      corr = addConnector(hist, corr);
+      return { hist, corr, mode: "summary" };
+    }
+
+    function getPairSeries(pairData, product) {
+      let hist = [];
+      let corr = [];
+
+      if (!pairData) {
+        return { hist: [], corr: [], mode: "empty" };
+      }
+
+      if (product === "All") {
+        hist = compactToTradeHist(pairData.h);
+        corr = compactToTradeCorr(pairData.c);
+      } else {
+        const entry = pairData.p?.[String(product)];
+        if (entry) {
+          hist = compactToTradeHist(entry.h);
+          corr = compactToTradeCorr(entry.c);
+        }
+      }
+
+      corr = addConnector(hist, corr);
+      return { hist, corr, mode: "pair" };
+    }
+
+    async function getSelectedSeries() {
+      const exporter = exporterEl.value;
+      const importer = importerEl.value;
+      const product = productEl.value;
+
+      if (
+        (exporter === "All" && importer === "All" && product === "All") ||
+        (exporter !== "All" && importer === "All" && product === "All") ||
+        (exporter === "All" && importer !== "All" && product === "All") ||
+        (exporter === "All" && importer === "All" && product !== "All")
+      ) {
+        return getSummarySeries(exporter, importer, product);
+      }
+
+      if (exporter !== "All" && importer !== "All") {
+        const pairData = await loadPairFile(exporter, importer);
+        return getPairSeries(pairData, product);
+      }
+
+      return { hist: [], corr: [], mode: "empty" };
+    }
+
+    function getIndicatorSelection() {
+      return {
+        gdp: indGDPEl.checked,
+        gdpcap: indGDPCAPEl.checked,
+        pop: indPOPPEl.checked
+      };
+    }
+
+    function getCountryOrAverageSeries(countryCode) {
+      if (countryCode === "All") return FEATURE_AVG_BY_YEAR;
+      return COUNTRY_FEATURES[countryCode] || [];
+    }
+
+    function buildIndicatorTrace(series, field, label, lineColor, dashStyle) {
+      const cleanSeries = series.filter(d => d[field] !== null && d[field] !== undefined);
+
+      return {
+        x: cleanSeries.map(d => d.t),
+        y: cleanSeries.map(d => d[field]),
+        type: "scatter",
+        mode: "lines",
+        name: label,
+        yaxis: "y2",
+        line: {
+          color: lineColor,
+          width: 2,
+          dash: dashStyle
+        },
+        opacity: 0.95,
+        hovertemplate: `%{x}<br>${label}: %{y:.3s}<extra></extra>`
+      };
+    }
+
+    function getIndicatorTraces(exporter, importer) {
+      const selected = getIndicatorSelection();
+      const traces = [];
+
+      const exporterSeries = getCountryOrAverageSeries(exporter);
+      const importerSeries = getCountryOrAverageSeries(importer);
+
+      const expLabelBase = exporter === "All" ? "Exp avg" : exporter;
+      const impLabelBase = importer === "All" ? "Imp avg" : importer;
+
+      if (selected.gdp) {
+        traces.push(buildIndicatorTrace(exporterSeries, "gdp", `${expLabelBase} GDP`, "#16a34a", "dash"));
+        traces.push(buildIndicatorTrace(importerSeries, "gdp", `${impLabelBase} GDP`, "#15803d", "dot"));
+      }
+
+      if (selected.gdpcap) {
+        traces.push(buildIndicatorTrace(exporterSeries, "gdpcap", `${expLabelBase} GDP/cap`, "#f59e0b", "dash"));
+        traces.push(buildIndicatorTrace(importerSeries, "gdpcap", `${impLabelBase} GDP/cap`, "#d97706", "dot"));
+      }
+
+      if (selected.pop) {
+        traces.push(buildIndicatorTrace(exporterSeries, "pop", `${expLabelBase} Pop`, "#7c3aed", "dash"));
+        traces.push(buildIndicatorTrace(importerSeries, "pop", `${impLabelBase} Pop`, "#6d28d9", "dot"));
+      }
+
+      return traces.filter(tr => tr.x.length && tr.y.length);
+    }
+
+    async function renderPlot() {
+      if (!META || !SMALL) return;
+
+      const exporter = exporterEl.value;
+      const importer = importerEl.value;
+      const product = productEl.value;
+      const productLabel = productEl.options[productEl.selectedIndex]?.text || product;
+
+      try {
+        setStatus("Updating chart...");
+
+        const { hist, corr } = await getSelectedSeries();
+
+        const traces = [
+          {
+            x: hist.map(d => d.t),
+            y: hist.map(d => d.value),
+            type: "scatter",
+            mode: "lines+markers",
+            name: "Historical trade",
+            line: { color: "black", width: 3 },
+            marker: { size: 5 }
+          },
+          {
+            x: corr.map(d => d.t),
+            y: corr.map(d => d.pred_v2015),
+            type: "scatter",
+            mode: "lines",
+            name: "Corrected forecast",
+            line: { color: "#2563eb", width: 3 }
+          },
+          ...getIndicatorTraces(exporter, importer)
+        ];
+
+        Plotly.newPlot(
+          "chart",
+          traces,
+          {
+            title: {
+              text: `${exporter} → ${importer} | ${productLabel}`,
+              x: 0,
+              xanchor: "left",
+              font: { size: 20 }
+            },
+            xaxis: { title: "Year" },
+            yaxis: {
+              title: "Trade Value (constant 2015 USD)",
+              tickformat: "~s"
+            },
+            yaxis2: {
+              title: "Indicator value",
+              overlaying: "y",
+              side: "right",
+              tickformat: "~s",
+              showgrid: false
+            },
+            template: "simple_white",
+            height: 680,
+            margin: { l: 75, r: 180, t: 80, b: 60 },
+            legend: {
+              orientation: "v",
+              x: 1.02,
+              xanchor: "left",
+              y: 1,
+              yanchor: "top",
+              bgcolor: "rgba(255,255,255,0.85)",
+              bordercolor: "#e5e7eb",
+              borderwidth: 1,
+              font: { size: 12 }
+            },
+            hovermode: "x unified"
+          },
+          {
+            responsive: true,
+            displayModeBar: true
+          }
+        );
+
+        setStatus(`Updated: <strong>${exporter}</strong> → <strong>${importer}</strong> | <strong>${productLabel}</strong>`);
+      } catch (err) {
+        console.error("Render error:", err);
+
+        Plotly.newPlot(
+          "chart",
+          [],
+          {
+            title: {
+              text: `${exporter} → ${importer} | ${productLabel}`,
+              x: 0,
+              xanchor: "left"
+            },
+            template: "simple_white",
+            height: 680,
+            margin: { l: 75, r: 180, t: 80, b: 60 }
+          },
+          { responsive: true, displayModeBar: true }
+        );
+
+        setStatus("Ready.");
+      }
+    }
+
+    function resetFilters() {
+      exporterEl.value = "All";
+      importerEl.value = "All";
+      productEl.value = "All";
+      indGDPEl.checked = false;
+      indGDPCAPEl.checked = false;
+      indPOPPEl.checked = false;
+      renderPlot();
+    }
+
+    async function init() {
+      try {
+        await loadBaseData();
+        initDropdowns();
+        await renderPlot();
+      } catch (err) {
+        console.error("Initialization error:", err);
+        setStatus("Base files not found.");
+      }
+    }
+
+    updateBtn.addEventListener("click", renderPlot);
+    resetBtn.addEventListener("click", resetFilters);
+
+    init();
+  </script>
+</body>
+</html>
