@@ -285,13 +285,6 @@
       margin: 0 0 10px;
     }
 
-    .loading {
-      padding: 40px 10px;
-      text-align: center;
-      color: var(--muted);
-      font-size: 14px;
-    }
-
     @media (max-width: 980px) {
       .grid {
         grid-template-columns: 1fr;
@@ -349,11 +342,11 @@
             </label>
             <label class="check-item">
               <input type="checkbox" id="modelD1" />
-              <span>D.1</span>
+              <span>D.1 (HS2-HS6)</span>
             </label>
             <label class="check-item">
               <input type="checkbox" id="modelD2" />
-              <span>D.2</span>
+              <span>D.2 (HS2-HS4-HS6)</span>
             </label>
           </div>
           <div class="helper-text">
@@ -404,24 +397,30 @@
           </div>
         </div>
 
-        <div id="chart">
-          <div class="loading">Loading chart...</div>
-        </div>
+        <div id="chart"></div>
 
         <div class="methodology-card">
           <h3>Methodology overview</h3>
           <p>
             The dashboard combines historical BACI trade observations with forecasted trade paths generated from
-            harmonized future macroeconomic feature trajectories.
+            future macroeconomic trajectories.
           </p>
           <p>
-            Future feature series are aligned to a common historical reference point using country-level anchoring,
-            with <strong>2015</strong> used as the anchor year for the monetary variables. Monetary values are shown in
-            <strong>constant 2015 USD</strong>.
+            For model training, the macroeconomic variables are taken from <strong>World Bank (WB)</strong> data.
+            For future prediction, the macroeconomic variables are based on <strong>SSP2</strong> trajectories
+            corrected and aligned according to the <strong>World Bank baseline</strong>.
           </p>
           <p>
-            Historical observations cover the period up to <strong>2024</strong>, while future values are displayed at a
-            <strong>5-year frequency</strong>. Multiple forecast variants can be displayed together for direct comparison.
+            Future feature series are anchored at the country level using <strong>2015</strong> as the anchor year.
+            Monetary values are displayed in <strong>constant 2015 USD</strong>.
+          </p>
+          <p>
+            Historical observations cover the period up to <strong>2024</strong>, while forecasted values are shown
+            at a <strong>5-year frequency</strong>. Multiple forecast variants can be displayed together for direct comparison.
+          </p>
+          <p>
+            Trade values in the source files are stored in <strong>thousands of USD</strong>. The dashboard multiplies
+            them by <strong>1000</strong> so the chart displays full dollar amounts.
           </p>
           <p>
             Optional macro overlays are drawn from the separate features file. For a selected country, the dashboard
@@ -437,28 +436,26 @@
     const META_PATH = "trade_dashboard_meta.json";
     const SMALL_PATH_A = "trade_dashboard_small.json";
     const FEATURES_PATH = "features.csv";
+    const TRADE_SCALE = 1000;
 
     const MODEL_CONFIG = {
       A: {
         label: "A",
         color: "#2563eb",
         smallPath: "trade_dashboard_small.json",
-        flowBasePath: "data_A/flows",
-        summaryIsGzip: false
+        flowBasePath: "data_A/flows"
       },
       D1: {
         label: "D.1",
         color: "#dc2626",
         smallPath: "trade_dashboard_small_optionD_26.json.gz",
-        flowBasePath: "data_D26/flows",
-        summaryIsGzip: true
+        flowBasePath: "data_D26/flows"
       },
       D2: {
         label: "D.2",
         color: "#059669",
         smallPath: "trade_dashboard_small_optionD_246.json.gz",
-        flowBasePath: "data_D246/flows",
-        summaryIsGzip: true
+        flowBasePath: "data_D246/flows"
       }
     };
 
@@ -640,7 +637,7 @@
       if (!series || !Array.isArray(series.y) || !Array.isArray(series.v)) return [];
       return series.y.map((year, idx) => ({
         t: Number(year),
-        value: Number(series.v[idx])
+        value: Number(series.v[idx]) * TRADE_SCALE
       }));
     }
 
@@ -648,7 +645,7 @@
       if (!series || !Array.isArray(series.y) || !Array.isArray(series.v)) return [];
       return series.y.map((year, idx) => ({
         t: Number(year),
-        pred_v2015: Number(series.v[idx])
+        pred_v2015: Number(series.v[idx]) * TRADE_SCALE
       }));
     }
 
