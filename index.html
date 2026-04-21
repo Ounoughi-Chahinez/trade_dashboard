@@ -6,11 +6,7 @@
   <title>Trade Forecast Explorer</title>
   <link rel="icon" type="image/png" href="/icon.png">
   <link rel="shortcut icon" href="/icon.png">
-
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-
-  <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 
   <style>
     :root {
@@ -134,9 +130,9 @@
       color: var(--muted);
     }
 
+    .search-input,
     select {
       width: 100%;
-      min-height: 44px;
       border: 1px solid var(--border);
       border-radius: 12px;
       background: white;
@@ -146,30 +142,19 @@
       outline: none;
     }
 
+    .search-input {
+      min-height: 42px;
+      margin-bottom: 8px;
+    }
+
+    select {
+      min-height: 44px;
+    }
+
+    .search-input:focus,
     select:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
-    }
-
-    .ts-wrapper.single .ts-control,
-    .ts-control {
-      min-height: 44px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      padding: 10px 12px;
-      font-size: 14px;
-      box-shadow: none;
-    }
-
-    .ts-wrapper.focus .ts-control {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
-    }
-
-    .ts-dropdown {
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      overflow: hidden;
     }
 
     .button-row {
@@ -340,16 +325,19 @@
 
         <div class="control">
           <label for="exporter">Exporter</label>
+          <input type="text" id="exporterSearch" class="search-input" placeholder="Search exporter..." />
           <select id="exporter"></select>
         </div>
 
         <div class="control">
           <label for="importer">Importer</label>
+          <input type="text" id="importerSearch" class="search-input" placeholder="Search importer..." />
           <select id="importer"></select>
         </div>
 
         <div class="control">
           <label for="product">Product (HS6)</label>
+          <input type="text" id="productSearch" class="search-input" placeholder="Search product or HS6..." />
           <select id="product"></select>
         </div>
 
@@ -485,13 +473,19 @@
     let COUNTRY_FEATURES = {};
     let MODEL_SMALLS = {};
     let PAIR_CACHE = {};
-    let exporterTS = null;
-    let importerTS = null;
-    let productTS = null;
+
+    let EXPORTER_OPTIONS = [];
+    let IMPORTER_OPTIONS = [];
+    let PRODUCT_OPTIONS = [];
 
     const exporterEl = document.getElementById("exporter");
     const importerEl = document.getElementById("importer");
     const productEl = document.getElementById("product");
+
+    const exporterSearchEl = document.getElementById("exporterSearch");
+    const importerSearchEl = document.getElementById("importerSearch");
+    const productSearchEl = document.getElementById("productSearch");
+
     const statusEl = document.getElementById("status");
     const updateBtn = document.getElementById("updateBtn");
     const resetBtn = document.getElementById("resetBtn");
@@ -528,43 +522,78 @@
       });
     }
 
-    function setupSearchableSelects() {
-      if (exporterTS) exporterTS.destroy();
-      if (importerTS) importerTS.destroy();
-      if (productTS) productTS.destroy();
+    function filterSimpleOptions(allValues, query) {
+      const q = (query || "").trim().toLowerCase();
+      if (!q) return allValues;
+      return allValues.filter(v => String(v).toLowerCase().includes(q));
+    }
 
-      exporterTS = new TomSelect("#exporter", {
-        create: false,
-        maxItems: 1,
-        searchField: ["text", "value"],
-        sortField: [{ field: "text", direction: "asc" }]
-      });
-
-      importerTS = new TomSelect("#importer", {
-        create: false,
-        maxItems: 1,
-        searchField: ["text", "value"],
-        sortField: [{ field: "text", direction: "asc" }]
-      });
-
-      productTS = new TomSelect("#product", {
-        create: false,
-        maxItems: 1,
-        searchField: ["text", "value"],
-        sortField: [{ field: "text", direction: "asc" }]
-      });
+    function filterProductOptions(allProducts, query) {
+      const q = (query || "").trim().toLowerCase();
+      if (!q) return allProducts;
+      return allProducts.filter(p =>
+        String(p.k).toLowerCase().includes(q) ||
+        String(p.label).toLowerCase().includes(q)
+      );
     }
 
     function initDropdowns() {
-      populateSimpleSelect(exporterEl, META.exporters || ["All"]);
-      populateSimpleSelect(importerEl, META.importers || ["All"]);
-      populateProductSelect(productEl, META.products || [{ k: "All", label: "All" }]);
+      EXPORTER_OPTIONS = META.exporters || ["All"];
+      IMPORTER_OPTIONS = META.importers || ["All"];
+      PRODUCT_OPTIONS = META.products || [{ k: "All", label: "All" }];
 
-      setupSearchableSelects();
+      populateSimpleSelect(exporterEl, EXPORTER_OPTIONS);
+      populateSimpleSelect(importerEl, IMPORTER_OPTIONS);
+      populateProductSelect(productEl, PRODUCT_OPTIONS);
 
-      exporterTS.setValue("All", true);
-      importerTS.setValue("All", true);
-      productTS.setValue("All", true);
+      exporterEl.value = "All";
+      importerEl.value = "All";
+      productEl.value = "All";
+    }
+
+    function refreshExporterOptions() {
+      const currentValue = exporterEl.value;
+      const filtered = filterSimpleOptions(EXPORTER_OPTIONS, exporterSearchEl.value);
+
+      populateSimpleSelect(exporterEl, filtered);
+
+      if (filtered.includes(currentValue)) {
+        exporterEl.value = currentValue;
+      } else if (filtered.includes("All")) {
+        exporterEl.value = "All";
+      } else if (filtered.length > 0) {
+        exporterEl.value = filtered[0];
+      }
+    }
+
+    function refreshImporterOptions() {
+      const currentValue = importerEl.value;
+      const filtered = filterSimpleOptions(IMPORTER_OPTIONS, importerSearchEl.value);
+
+      populateSimpleSelect(importerEl, filtered);
+
+      if (filtered.includes(currentValue)) {
+        importerEl.value = currentValue;
+      } else if (filtered.includes("All")) {
+        importerEl.value = "All";
+      } else if (filtered.length > 0) {
+        importerEl.value = filtered[0];
+      }
+    }
+
+    function refreshProductOptions() {
+      const currentValue = productEl.value;
+      const filtered = filterProductOptions(PRODUCT_OPTIONS, productSearchEl.value);
+
+      populateProductSelect(productEl, filtered);
+
+      if (filtered.some(p => String(p.k) === String(currentValue))) {
+        productEl.value = currentValue;
+      } else if (filtered.some(p => String(p.k) === "All")) {
+        productEl.value = "All";
+      } else if (filtered.length > 0) {
+        productEl.value = filtered[0].k;
+      }
     }
 
     function getSelectedModels() {
@@ -1032,14 +1061,22 @@
             xaxis: { title: "Year" },
             yaxis: {
               title: "Trade Value (constant 2015 USD)",
-              tickformat: "~s"
+              tickformat: "~s",
+              tickformatstops: [
+                { dtickrange: [1e6, 1e9], value: ".1fM" },
+                { dtickrange: [1e9, 1e12], value: ".1fB" }
+              ]
             },
             yaxis2: {
               title: "Indicator value",
               overlaying: "y",
               side: "right",
+              showgrid: false,
               tickformat: "~s",
-              showgrid: false
+              tickformatstops: [
+                { dtickrange: [1e6, 1e9], value: ".1fM" },
+                { dtickrange: [1e9, 1e12], value: ".1fB" }
+              ]
             },
             template: "simple_white",
             height: 680,
@@ -1080,9 +1117,17 @@
     }
 
     function resetFilters() {
-      exporterTS.setValue("All", true);
-      importerTS.setValue("All", true);
-      productTS.setValue("All", true);
+      exporterSearchEl.value = "";
+      importerSearchEl.value = "";
+      productSearchEl.value = "";
+
+      populateSimpleSelect(exporterEl, EXPORTER_OPTIONS);
+      populateSimpleSelect(importerEl, IMPORTER_OPTIONS);
+      populateProductSelect(productEl, PRODUCT_OPTIONS);
+
+      exporterEl.value = "All";
+      importerEl.value = "All";
+      productEl.value = "All";
 
       modelAEl.checked = true;
       modelD1El.checked = false;
@@ -1106,6 +1151,10 @@
         setStatus("Base files not found.");
       }
     }
+
+    exporterSearchEl.addEventListener("input", refreshExporterOptions);
+    importerSearchEl.addEventListener("input", refreshImporterOptions);
+    productSearchEl.addEventListener("input", refreshProductOptions);
 
     updateBtn.addEventListener("click", renderPlot);
     resetBtn.addEventListener("click", resetFilters);
