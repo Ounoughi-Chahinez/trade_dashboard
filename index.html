@@ -4,8 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Trade Forecast Explorer</title>
-  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="icon" type="image/png" href="/icon.png">
+  <link rel="shortcut icon" href="/icon.png">
+
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 
   <style>
     :root {
@@ -20,9 +25,7 @@
       --radius: 18px;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -121,9 +124,7 @@
       line-height: 1.5;
     }
 
-    .control {
-      margin-bottom: 14px;
-    }
+    .control { margin-bottom: 14px; }
 
     .control label {
       display: block;
@@ -150,6 +151,27 @@
       box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
     }
 
+    .ts-wrapper.single .ts-control,
+    .ts-control {
+      min-height: 44px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      font-size: 14px;
+      box-shadow: none;
+    }
+
+    .ts-wrapper.focus .ts-control {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+    }
+
+    .ts-dropdown {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
     .button-row {
       display: flex;
       gap: 10px;
@@ -169,9 +191,7 @@
       cursor: pointer;
     }
 
-    button:hover {
-      opacity: 0.96;
-    }
+    button:hover { opacity: 0.96; }
 
     .secondary-btn {
       background: #e5e7eb;
@@ -345,8 +365,8 @@
               <span>D.1 (HS2-HS6)</span>
             </label>
             <label class="check-item">
-              <input type="checkbox" id="modelD2" />
-              <span>D.2 (HS2-HS4-HS6)</span>
+              <input type="checkbox" id="modelD2Z" />
+              <span>D.2 z</span>
             </label>
           </div>
           <div class="helper-text">
@@ -451,11 +471,11 @@
         smallPath: "trade_dashboard_small_optionD_26.json.gz",
         flowBasePath: "data_D26/flows"
       },
-      D2: {
-        label: "D.2",
+      D2Z: {
+        label: "D.2 z",
         color: "#059669",
         smallPath: "trade_dashboard_small_optionD_246_z.json.gz",
-        flowBasePath: "data_D246/flows"
+        flowBasePath: "optionD_246_z/flows"
       }
     };
 
@@ -465,6 +485,9 @@
     let COUNTRY_FEATURES = {};
     let MODEL_SMALLS = {};
     let PAIR_CACHE = {};
+    let exporterTS = null;
+    let importerTS = null;
+    let productTS = null;
 
     const exporterEl = document.getElementById("exporter");
     const importerEl = document.getElementById("importer");
@@ -475,7 +498,7 @@
 
     const modelAEl = document.getElementById("modelA");
     const modelD1El = document.getElementById("modelD1");
-    const modelD2El = document.getElementById("modelD2");
+    const modelD2ZEl = document.getElementById("modelD2Z");
 
     const indGDPEl = document.getElementById("indGDP");
     const indGDPCAPEl = document.getElementById("indGDPCAP");
@@ -505,21 +528,50 @@
       });
     }
 
+    function setupSearchableSelects() {
+      if (exporterTS) exporterTS.destroy();
+      if (importerTS) importerTS.destroy();
+      if (productTS) productTS.destroy();
+
+      exporterTS = new TomSelect("#exporter", {
+        create: false,
+        maxItems: 1,
+        searchField: ["text", "value"],
+        sortField: [{ field: "text", direction: "asc" }]
+      });
+
+      importerTS = new TomSelect("#importer", {
+        create: false,
+        maxItems: 1,
+        searchField: ["text", "value"],
+        sortField: [{ field: "text", direction: "asc" }]
+      });
+
+      productTS = new TomSelect("#product", {
+        create: false,
+        maxItems: 1,
+        searchField: ["text", "value"],
+        sortField: [{ field: "text", direction: "asc" }]
+      });
+    }
+
     function initDropdowns() {
       populateSimpleSelect(exporterEl, META.exporters || ["All"]);
       populateSimpleSelect(importerEl, META.importers || ["All"]);
       populateProductSelect(productEl, META.products || [{ k: "All", label: "All" }]);
 
-      exporterEl.value = "All";
-      importerEl.value = "All";
-      productEl.value = "All";
+      setupSearchableSelects();
+
+      exporterTS.setValue("All", true);
+      importerTS.setValue("All", true);
+      productTS.setValue("All", true);
     }
 
     function getSelectedModels() {
       const selected = [];
       if (modelAEl.checked) selected.push("A");
       if (modelD1El.checked) selected.push("D1");
-      if (modelD2El.checked) selected.push("D2");
+      if (modelD2ZEl.checked) selected.push("D2Z");
       return selected;
     }
 
@@ -656,12 +708,6 @@
       return [{ t: last.t, pred_v2015: last.value }, ...pred];
     }
 
-    async function fetchJson(url) {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) return null;
-      return await res.json();
-    }
-
     async function fetchJsonGz(url) {
       let res;
       try {
@@ -705,7 +751,7 @@
       FEATURE_AVG_BY_YEAR = indexes.avgSeries;
       COUNTRY_FEATURES = indexes.countryMap;
 
-      for (const modelKey of ["D1", "D2"]) {
+      for (const modelKey of ["D1", "D2Z"]) {
         const cfg = MODEL_CONFIG[modelKey];
         const gzResult = await fetchJsonGz(cfg.smallPath);
         MODEL_SMALLS[modelKey] = gzResult.ok ? gzResult.data : null;
@@ -1034,13 +1080,13 @@
     }
 
     function resetFilters() {
-      exporterEl.value = "All";
-      importerEl.value = "All";
-      productEl.value = "All";
+      exporterTS.setValue("All", true);
+      importerTS.setValue("All", true);
+      productTS.setValue("All", true);
 
       modelAEl.checked = true;
       modelD1El.checked = false;
-      modelD2El.checked = false;
+      modelD2ZEl.checked = false;
 
       indGDPEl.checked = false;
       indGDPCAPEl.checked = false;
