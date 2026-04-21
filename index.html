@@ -105,6 +105,7 @@
       padding: 20px;
       position: sticky;
       top: 20px;
+      overflow: visible;
     }
 
     .section-title {
@@ -120,7 +121,10 @@
       line-height: 1.5;
     }
 
-    .control { margin-bottom: 14px; }
+    .control {
+      margin-bottom: 14px;
+      position: relative;
+    }
 
     .control label {
       display: block;
@@ -130,31 +134,110 @@
       color: var(--muted);
     }
 
-    .search-input,
-    select {
+    .dropdown {
+      position: relative;
       width: 100%;
+    }
+
+    .dropdown-trigger {
+      width: 100%;
+      min-height: 44px;
       border: 1px solid var(--border);
       border-radius: 12px;
       background: white;
       color: var(--text);
-      padding: 10px 12px;
+      padding: 10px 40px 10px 12px;
+      font-size: 14px;
+      outline: none;
+      cursor: pointer;
+      text-align: left;
+      position: relative;
+    }
+
+    .dropdown-trigger:focus,
+    .dropdown.open .dropdown-trigger {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+    }
+
+    .dropdown-trigger::after {
+      content: "▾";
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    .dropdown-panel {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 14px 32px rgba(17, 24, 39, 0.12);
+      z-index: 1000;
+      display: none;
+      overflow: hidden;
+    }
+
+    .dropdown.open .dropdown-panel {
+      display: block;
+    }
+
+    .dropdown-search-wrap {
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      background: #fff;
+    }
+
+    .dropdown-search {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
       font-size: 14px;
       outline: none;
     }
 
-    .search-input {
-      min-height: 42px;
-      margin-bottom: 8px;
-    }
-
-    select {
-      min-height: 44px;
-    }
-
-    .search-input:focus,
-    select:focus {
+    .dropdown-search:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+    }
+
+    .dropdown-options {
+      max-height: 260px;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+
+    .dropdown-option {
+      padding: 10px 12px;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.35;
+    }
+
+    .dropdown-option:hover,
+    .dropdown-option.active {
+      background: #eff6ff;
+    }
+
+    .dropdown-option.selected {
+      background: #dbeafe;
+      font-weight: 700;
+    }
+
+    .dropdown-empty {
+      padding: 12px;
+      color: var(--muted);
+      font-size: 13px;
     }
 
     .button-row {
@@ -324,21 +407,18 @@
         </p>
 
         <div class="control">
-          <label for="exporter">Exporter</label>
-          <input type="text" id="exporterSearch" class="search-input" placeholder="Search exporter..." />
-          <select id="exporter"></select>
+          <label>Exporter</label>
+          <div id="exporterDropdown" class="dropdown"></div>
         </div>
 
         <div class="control">
-          <label for="importer">Importer</label>
-          <input type="text" id="importerSearch" class="search-input" placeholder="Search importer..." />
-          <select id="importer"></select>
+          <label>Importer</label>
+          <div id="importerDropdown" class="dropdown"></div>
         </div>
 
         <div class="control">
-          <label for="product">Product (HS6)</label>
-          <input type="text" id="productSearch" class="search-input" placeholder="Search product or HS6..." />
-          <select id="product"></select>
+          <label>Product (HS6)</label>
+          <div id="productDropdown" class="dropdown"></div>
         </div>
 
         <div class="control">
@@ -474,17 +554,9 @@
     let MODEL_SMALLS = {};
     let PAIR_CACHE = {};
 
-    let EXPORTER_OPTIONS = [];
-    let IMPORTER_OPTIONS = [];
-    let PRODUCT_OPTIONS = [];
-
-    const exporterEl = document.getElementById("exporter");
-    const importerEl = document.getElementById("importer");
-    const productEl = document.getElementById("product");
-
-    const exporterSearchEl = document.getElementById("exporterSearch");
-    const importerSearchEl = document.getElementById("importerSearch");
-    const productSearchEl = document.getElementById("productSearch");
+    let exporterDD = null;
+    let importerDD = null;
+    let productDD = null;
 
     const statusEl = document.getElementById("status");
     const updateBtn = document.getElementById("updateBtn");
@@ -502,98 +574,235 @@
       statusEl.innerHTML = message;
     }
 
-    function populateSimpleSelect(selectEl, values) {
-      selectEl.innerHTML = "";
-      values.forEach((v) => {
-        const option = document.createElement("option");
-        option.value = v;
-        option.textContent = v;
-        selectEl.appendChild(option);
+    function createSearchableDropdown({
+      mountId,
+      items = [],
+      defaultValue = null,
+      placeholder = "Select...",
+      searchPlaceholder = "Search..."
+    }) {
+      const root = document.getElementById(mountId);
+
+      const state = {
+        items: [...items],
+        filteredItems: [...items],
+        value: defaultValue ?? (items[0]?.value ?? ""),
+        activeIndex: -1
+      };
+
+      root.innerHTML = `
+        <button type="button" class="dropdown-trigger"></button>
+        <div class="dropdown-panel">
+          <div class="dropdown-search-wrap">
+            <input type="text" class="dropdown-search" placeholder="${searchPlaceholder}">
+          </div>
+          <div class="dropdown-options"></div>
+        </div>
+      `;
+
+      const trigger = root.querySelector(".dropdown-trigger");
+      const panel = root.querySelector(".dropdown-panel");
+      const searchInput = root.querySelector(".dropdown-search");
+      const optionsBox = root.querySelector(".dropdown-options");
+
+      function getSelectedItem() {
+        return state.items.find(item => String(item.value) === String(state.value)) || null;
+      }
+
+      function renderTrigger() {
+        const selected = getSelectedItem();
+        trigger.textContent = selected ? selected.label : placeholder;
+      }
+
+      function renderOptions() {
+        optionsBox.innerHTML = "";
+
+        if (!state.filteredItems.length) {
+          optionsBox.innerHTML = `<div class="dropdown-empty">No matches found.</div>`;
+          return;
+        }
+
+        state.filteredItems.forEach((item, idx) => {
+          const div = document.createElement("div");
+          div.className = "dropdown-option";
+          if (String(item.value) === String(state.value)) div.classList.add("selected");
+          if (idx === state.activeIndex) div.classList.add("active");
+          div.textContent = item.label;
+          div.dataset.value = item.value;
+
+          div.addEventListener("click", () => {
+            state.value = item.value;
+            close();
+            renderTrigger();
+          });
+
+          optionsBox.appendChild(div);
+        });
+      }
+
+      function filterItems(query) {
+        const q = (query || "").trim().toLowerCase();
+
+        if (!q) {
+          state.filteredItems = [...state.items];
+        } else {
+          state.filteredItems = state.items.filter(item =>
+            String(item.label).toLowerCase().includes(q) ||
+            String(item.value).toLowerCase().includes(q)
+          );
+        }
+
+        state.activeIndex = state.filteredItems.length ? 0 : -1;
+        renderOptions();
+      }
+
+      function open() {
+        closeAllDropdowns();
+        root.classList.add("open");
+        searchInput.value = "";
+        filterItems("");
+        setTimeout(() => searchInput.focus(), 0);
+      }
+
+      function close() {
+        root.classList.remove("open");
+        state.activeIndex = -1;
+      }
+
+      function isOpen() {
+        return root.classList.contains("open");
+      }
+
+      trigger.addEventListener("click", () => {
+        if (isOpen()) {
+          close();
+        } else {
+          open();
+        }
+      });
+
+      searchInput.addEventListener("input", () => {
+        filterItems(searchInput.value);
+      });
+
+      searchInput.addEventListener("keydown", (e) => {
+        if (!isOpen()) return;
+
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          if (state.filteredItems.length) {
+            state.activeIndex = Math.min(state.activeIndex + 1, state.filteredItems.length - 1);
+            renderOptions();
+            scrollActiveIntoView();
+          }
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          if (state.filteredItems.length) {
+            state.activeIndex = Math.max(state.activeIndex - 1, 0);
+            renderOptions();
+            scrollActiveIntoView();
+          }
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (state.filteredItems[state.activeIndex]) {
+            state.value = state.filteredItems[state.activeIndex].value;
+            close();
+            renderTrigger();
+          }
+        } else if (e.key === "Escape") {
+          close();
+        }
+      });
+
+      function scrollActiveIntoView() {
+        const activeEl = optionsBox.querySelector(".dropdown-option.active");
+        if (activeEl) {
+          activeEl.scrollIntoView({ block: "nearest" });
+        }
+      }
+
+      function setItems(items, defaultValue = null) {
+        state.items = [...items];
+        state.filteredItems = [...items];
+
+        const hasCurrent = state.items.some(item => String(item.value) === String(state.value));
+
+        if (defaultValue !== null && defaultValue !== undefined) {
+          state.value = defaultValue;
+        } else if (!hasCurrent) {
+          state.value = state.items[0]?.value ?? "";
+        }
+
+        renderTrigger();
+        renderOptions();
+      }
+
+      function setValue(value) {
+        state.value = value;
+        renderTrigger();
+        renderOptions();
+      }
+
+      function getValue() {
+        return state.value;
+      }
+
+      renderTrigger();
+      renderOptions();
+
+      return {
+        root,
+        open,
+        close,
+        setItems,
+        setValue,
+        getValue
+      };
+    }
+
+    function closeAllDropdowns() {
+      document.querySelectorAll(".dropdown.open").forEach(el => {
+        el.classList.remove("open");
       });
     }
 
-    function populateProductSelect(selectEl, products) {
-      selectEl.innerHTML = "";
-      products.forEach((p) => {
-        const option = document.createElement("option");
-        option.value = p.k;
-        option.textContent = p.label;
-        selectEl.appendChild(option);
-      });
-    }
-
-    function filterSimpleOptions(allValues, query) {
-      const q = (query || "").trim().toLowerCase();
-      if (!q) return allValues;
-      return allValues.filter(v => String(v).toLowerCase().includes(q));
-    }
-
-    function filterProductOptions(allProducts, query) {
-      const q = (query || "").trim().toLowerCase();
-      if (!q) return allProducts;
-      return allProducts.filter(p =>
-        String(p.k).toLowerCase().includes(q) ||
-        String(p.label).toLowerCase().includes(q)
-      );
-    }
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".dropdown")) {
+        closeAllDropdowns();
+      }
+    });
 
     function initDropdowns() {
-      EXPORTER_OPTIONS = META.exporters || ["All"];
-      IMPORTER_OPTIONS = META.importers || ["All"];
-      PRODUCT_OPTIONS = META.products || [{ k: "All", label: "All" }];
+      const exporterItems = (META.exporters || ["All"]).map(v => ({ value: v, label: v }));
+      const importerItems = (META.importers || ["All"]).map(v => ({ value: v, label: v }));
+      const productItems = (META.products || [{ k: "All", label: "All" }]).map(p => ({
+        value: p.k,
+        label: p.label
+      }));
 
-      populateSimpleSelect(exporterEl, EXPORTER_OPTIONS);
-      populateSimpleSelect(importerEl, IMPORTER_OPTIONS);
-      populateProductSelect(productEl, PRODUCT_OPTIONS);
+      exporterDD = createSearchableDropdown({
+        mountId: "exporterDropdown",
+        items: exporterItems,
+        defaultValue: "All",
+        placeholder: "Select exporter",
+        searchPlaceholder: "Search exporter..."
+      });
 
-      exporterEl.value = "All";
-      importerEl.value = "All";
-      productEl.value = "All";
-    }
+      importerDD = createSearchableDropdown({
+        mountId: "importerDropdown",
+        items: importerItems,
+        defaultValue: "All",
+        placeholder: "Select importer",
+        searchPlaceholder: "Search importer..."
+      });
 
-    function refreshExporterOptions() {
-      const currentValue = exporterEl.value;
-      const filtered = filterSimpleOptions(EXPORTER_OPTIONS, exporterSearchEl.value);
-
-      populateSimpleSelect(exporterEl, filtered);
-
-      if (filtered.includes(currentValue)) {
-        exporterEl.value = currentValue;
-      } else if (filtered.includes("All")) {
-        exporterEl.value = "All";
-      } else if (filtered.length > 0) {
-        exporterEl.value = filtered[0];
-      }
-    }
-
-    function refreshImporterOptions() {
-      const currentValue = importerEl.value;
-      const filtered = filterSimpleOptions(IMPORTER_OPTIONS, importerSearchEl.value);
-
-      populateSimpleSelect(importerEl, filtered);
-
-      if (filtered.includes(currentValue)) {
-        importerEl.value = currentValue;
-      } else if (filtered.includes("All")) {
-        importerEl.value = "All";
-      } else if (filtered.length > 0) {
-        importerEl.value = filtered[0];
-      }
-    }
-
-    function refreshProductOptions() {
-      const currentValue = productEl.value;
-      const filtered = filterProductOptions(PRODUCT_OPTIONS, productSearchEl.value);
-
-      populateProductSelect(productEl, filtered);
-
-      if (filtered.some(p => String(p.k) === String(currentValue))) {
-        productEl.value = currentValue;
-      } else if (filtered.some(p => String(p.k) === "All")) {
-        productEl.value = "All";
-      } else if (filtered.length > 0) {
-        productEl.value = filtered[0].k;
-      }
+      productDD = createSearchableDropdown({
+        mountId: "productDropdown",
+        items: productItems,
+        defaultValue: "All",
+        placeholder: "Select product",
+        searchPlaceholder: "Search product or HS6..."
+      });
     }
 
     function getSelectedModels() {
@@ -845,9 +1054,9 @@
     }
 
     async function getSelectedSeries() {
-      const exporter = exporterEl.value;
-      const importer = importerEl.value;
-      const product = productEl.value;
+      const exporter = exporterDD.getValue();
+      const importer = importerDD.getValue();
+      const product = productDD.getValue();
       const selectedModels = getSelectedModels();
 
       const isGlobal =
@@ -1003,12 +1212,15 @@
     }
 
     async function renderPlot() {
-      if (!META) return;
+      if (!META || !exporterDD || !importerDD || !productDD) return;
 
-      const exporter = exporterEl.value;
-      const importer = importerEl.value;
-      const product = productEl.value;
-      const productLabel = productEl.options[productEl.selectedIndex]?.text || product;
+      const exporter = exporterDD.getValue();
+      const importer = importerDD.getValue();
+      const product = productDD.getValue();
+
+      const productItem = (META.products || []).find(p => String(p.k) === String(product));
+      const productLabel = productItem?.label || product;
+
       const selectedModels = getSelectedModels();
 
       if (!selectedModels.length) {
@@ -1060,23 +1272,13 @@
             },
             xaxis: { title: "Year" },
             yaxis: {
-              title: "Trade Value (constant 2015 USD)",
-              tickformat: "~s",
-              tickformatstops: [
-                { dtickrange: [1e6, 1e9], value: ".1fM" },
-                { dtickrange: [1e9, 1e12], value: ".1fB" }
-              ]
+              title: "Trade Value (constant 2015 USD)"
             },
             yaxis2: {
               title: "Indicator value",
               overlaying: "y",
               side: "right",
-              showgrid: false,
-              tickformat: "~s",
-              tickformatstops: [
-                { dtickrange: [1e6, 1e9], value: ".1fM" },
-                { dtickrange: [1e9, 1e12], value: ".1fB" }
-              ]
+              showgrid: false
             },
             template: "simple_white",
             height: 680,
@@ -1117,17 +1319,9 @@
     }
 
     function resetFilters() {
-      exporterSearchEl.value = "";
-      importerSearchEl.value = "";
-      productSearchEl.value = "";
-
-      populateSimpleSelect(exporterEl, EXPORTER_OPTIONS);
-      populateSimpleSelect(importerEl, IMPORTER_OPTIONS);
-      populateProductSelect(productEl, PRODUCT_OPTIONS);
-
-      exporterEl.value = "All";
-      importerEl.value = "All";
-      productEl.value = "All";
+      exporterDD.setValue("All");
+      importerDD.setValue("All");
+      productDD.setValue("All");
 
       modelAEl.checked = true;
       modelD1El.checked = false;
@@ -1151,10 +1345,6 @@
         setStatus("Base files not found.");
       }
     }
-
-    exporterSearchEl.addEventListener("input", refreshExporterOptions);
-    importerSearchEl.addEventListener("input", refreshImporterOptions);
-    productSearchEl.addEventListener("input", refreshProductOptions);
 
     updateBtn.addEventListener("click", renderPlot);
     resetBtn.addEventListener("click", resetFilters);
