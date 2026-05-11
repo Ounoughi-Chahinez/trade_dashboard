@@ -388,6 +388,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="page">
     <section class="hero">
@@ -428,15 +429,23 @@
               <input type="checkbox" id="modelA" checked />
               <span>A</span>
             </label>
+
             <label class="check-item">
               <input type="checkbox" id="modelD1" />
               <span>D.1 (HS2-HS6)</span>
             </label>
+
             <label class="check-item">
               <input type="checkbox" id="modelD2Z" />
               <span>D.2 z</span>
             </label>
+
+            <label class="check-item">
+              <input type="checkbox" id="modelD246ENV" />
+              <span>D.246 env</span>
+            </label>
           </div>
+
           <div class="helper-text">
             Select one or more forecast variants to compare them on the same chart.
           </div>
@@ -449,15 +458,18 @@
               <input type="checkbox" id="indGDP" value="gdp" />
               <span>GDP</span>
             </label>
+
             <label class="check-item">
               <input type="checkbox" id="indGDPCAP" value="gdpcap" />
               <span>GDP per capita</span>
             </label>
+
             <label class="check-item">
               <input type="checkbox" id="indPOP" value="pop" />
               <span>Population</span>
             </label>
           </div>
+
           <div class="helper-text">
             <strong>All</strong> represents the average across countries by year.
           </div>
@@ -531,19 +543,32 @@
         label: "A",
         color: "#2563eb",
         smallPath: "trade_dashboard_small.json",
-        flowBasePath: "data_A/flows"
+        flowBasePath: "data_A/flows",
+        gz: false
       },
+
       D1: {
         label: "D.1",
         color: "#dc2626",
         smallPath: "trade_dashboard_small_optionD_26.json.gz",
-        flowBasePath: "data_D26/flows"
+        flowBasePath: "data_D26/flows",
+        gz: true
       },
+
       D2Z: {
         label: "D.2 z",
         color: "#059669",
         smallPath: "trade_dashboard_small_optionD_246_z.json.gz",
-        flowBasePath: "optionD_246_z/flows"
+        flowBasePath: "optionD_246_z/flows",
+        gz: true
+      },
+
+      D246ENV: {
+        label: "D.246 env",
+        color: "#7c3aed",
+        smallPath: "trade_dashboard_small_optionD_246_env.json.gz",
+        flowBasePath: "data_D246_env/flows",
+        gz: true
       }
     };
 
@@ -565,6 +590,7 @@
     const modelAEl = document.getElementById("modelA");
     const modelD1El = document.getElementById("modelD1");
     const modelD2ZEl = document.getElementById("modelD2Z");
+    const modelD246ENVEl = document.getElementById("modelD246ENV");
 
     const indGDPEl = document.getElementById("indGDP");
     const indGDPCAPEl = document.getElementById("indGDPCAP");
@@ -601,7 +627,6 @@
       `;
 
       const trigger = root.querySelector(".dropdown-trigger");
-      const panel = root.querySelector(".dropdown-panel");
       const searchInput = root.querySelector(".dropdown-search");
       const optionsBox = root.querySelector(".dropdown-options");
 
@@ -674,11 +699,8 @@
       }
 
       trigger.addEventListener("click", () => {
-        if (isOpen()) {
-          close();
-        } else {
-          open();
-        }
+        if (isOpen()) close();
+        else open();
       });
 
       searchInput.addEventListener("input", () => {
@@ -716,9 +738,7 @@
 
       function scrollActiveIntoView() {
         const activeEl = optionsBox.querySelector(".dropdown-option.active");
-        if (activeEl) {
-          activeEl.scrollIntoView({ block: "nearest" });
-        }
+        if (activeEl) activeEl.scrollIntoView({ block: "nearest" });
       }
 
       function setItems(items, defaultValue = null) {
@@ -810,6 +830,7 @@
       if (modelAEl.checked) selected.push("A");
       if (modelD1El.checked) selected.push("D1");
       if (modelD2ZEl.checked) selected.push("D2Z");
+      if (modelD246ENVEl.checked) selected.push("D246ENV");
       return selected;
     }
 
@@ -897,10 +918,12 @@
           avgMap[year].gdp_sum += row.gdp;
           avgMap[year].gdp_n += 1;
         }
+
         if (row.gdpcap !== null) {
           avgMap[year].gdpcap_sum += row.gdpcap;
           avgMap[year].gdpcap_n += 1;
         }
+
         if (row.pop !== null) {
           avgMap[year].pop_sum += row.pop;
           avgMap[year].pop_n += 1;
@@ -948,6 +971,7 @@
 
     async function fetchJsonGz(url) {
       let res;
+
       try {
         res = await fetch(url, { cache: "no-store" });
       } catch (err) {
@@ -989,7 +1013,7 @@
       FEATURE_AVG_BY_YEAR = indexes.avgSeries;
       COUNTRY_FEATURES = indexes.countryMap;
 
-      for (const modelKey of ["D1", "D2Z"]) {
+      for (const modelKey of ["D1", "D2Z", "D246ENV"]) {
         const cfg = MODEL_CONFIG[modelKey];
         const gzResult = await fetchJsonGz(cfg.smallPath);
         MODEL_SMALLS[modelKey] = gzResult.ok ? gzResult.data : null;
@@ -1023,15 +1047,19 @@
       if (exporter === "All" && importer === "All" && product === "All") {
         return compactToTradeHist(small.global?.hist);
       }
+
       if (exporter !== "All" && importer === "All" && product === "All") {
         return compactToTradeHist(small.exporter?.hist?.[exporter]);
       }
+
       if (exporter === "All" && importer !== "All" && product === "All") {
         return compactToTradeHist(small.importer?.hist?.[importer]);
       }
+
       if (exporter === "All" && importer === "All" && product !== "All") {
         return compactToTradeHist(small.product?.hist?.[String(product)]);
       }
+
       return [];
     }
 
@@ -1041,15 +1069,19 @@
       if (exporter === "All" && importer === "All" && product === "All") {
         return compactToTradeForecast(modelSmall.global?.corr);
       }
+
       if (exporter !== "All" && importer === "All" && product === "All") {
         return compactToTradeForecast(modelSmall.exporter?.corr?.[exporter]);
       }
+
       if (exporter === "All" && importer !== "All" && product === "All") {
         return compactToTradeForecast(modelSmall.importer?.corr?.[importer]);
       }
+
       if (exporter === "All" && importer === "All" && product !== "All") {
         return compactToTradeForecast(modelSmall.product?.corr?.[String(product)]);
       }
+
       return [];
     }
 
@@ -1303,7 +1335,9 @@
         );
 
         const selectedModelLabels = selectedModels.map(k => MODEL_CONFIG[k].label).join(", ");
-        const missingText = missing && missing.length ? `<br>Missing: <strong>${missing.join(" | ")}</strong>` : "";
+        const missingText = missing && missing.length
+          ? `<br>Missing: <strong>${missing.join(" | ")}</strong>`
+          : "";
 
         if (mode === "pair") {
           setStatus(`Updated pair view: <strong>${exporter}</strong> → <strong>${importer}</strong> | <strong>${productLabel}</strong><br>Models: <strong>${selectedModelLabels}</strong>${missingText}`);
@@ -1326,6 +1360,7 @@
       modelAEl.checked = true;
       modelD1El.checked = false;
       modelD2ZEl.checked = false;
+      modelD246ENVEl.checked = false;
 
       indGDPEl.checked = false;
       indGDPCAPEl.checked = false;
