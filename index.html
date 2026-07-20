@@ -397,6 +397,7 @@
         <span class="badge">Historical BACI</span>
         <span class="badge">Forecasted trade paths</span>
         <span class="badge">Optional macro overlays</span>
+        <span class="badge">TIAM-ECN scenarios</span>
       </div>
     </section>
 
@@ -444,6 +445,11 @@
               <input type="checkbox" id="modelD246ENV" />
               <span>D.3 (PPML with no baseline as input to RF with env)</span>
             </label>
+
+            <label class="check-item">
+              <input type="checkbox" id="modelDTIAM" />
+              <span>D.4 (Gravity PPML + RF with TIAM-ECN features)</span>
+            </label>
           </div>
 
           <div class="helper-text">
@@ -468,10 +474,22 @@
               <input type="checkbox" id="indPOP" value="pop" />
               <span>Population</span>
             </label>
+
+            <label class="check-item">
+              <input type="checkbox" id="indTIAMCO2" value="tiam_co2" disabled />
+              <span>TIAM CO&#8322; per capita (D.4)</span>
+            </label>
+
+            <label class="check-item">
+              <input type="checkbox" id="indTIAMRENEW" value="tiam_renew" disabled />
+              <span>TIAM renewables share % (D.4)</span>
+            </label>
           </div>
 
           <div class="helper-text">
             <strong>All</strong> represents the average across countries by year.
+            TIAM indicators are available when variant <strong>D.4</strong> is selected; they follow the
+            TIAM-ECN scenario trajectory (downscaled CO&#8322;, renewable share of primary energy).
           </div>
         </div>
 
@@ -511,6 +529,13 @@
             corrected and aligned according to the <strong>World Bank baseline</strong>.
           </p>
           <p>
+            Variant <strong>D.4</strong> uses a gravity PPML baseline (GDP per capita, population, distance, product
+            fixed effects) corrected by a Random Forest whose features come from the <strong>TIAM-ECN</strong>
+            energy-system model: country-level CO₂ emissions and renewable energy shares, downscaled from TIAM's
+            36 world regions to individual countries and interpolated to annual frequency. The displayed run uses
+            <strong>Scenario 1</strong>; the underlying data supports all six TIAM scenarios.
+          </p>
+          <p>
             Future feature series are anchored at the country level using <strong>2015</strong> as the anchor year.
             Monetary values are displayed in <strong>constant 2015 USD</strong>.
           </p>
@@ -524,7 +549,7 @@
           </p>
           <p>
             Optional macro overlays are drawn from the separate features file. For a selected country, the dashboard
-            displays that country’s indicator series. When exporter or importer is set to <strong>All</strong>, the
+            displays that country's indicator series. When exporter or importer is set to <strong>All</strong>, the
             dashboard uses the average indicator value across countries for each year.
           </p>
         </div>
@@ -536,6 +561,7 @@
     const META_PATH = "trade_dashboard_meta.json";
     const SMALL_PATH_A = "trade_dashboard_small.json";
     const FEATURES_PATH = "features.csv";
+    const TIAM_FEATURES_PATH = "features_optionD_tiam_v3.csv";
     const TRADE_SCALE = 1000;
 
     const MODEL_CONFIG = {
@@ -569,13 +595,26 @@
         smallPath: "trade_dashboard_small_optionD_246_env.json.gz",
         flowBasePath: "data_D246_env/flows",
         gz: true
+      },
+
+      DTIAM: {
+        label: "D.4 (TIAM)",
+        color: "#0891b2",
+        smallPath: "trade_dashboard_small_optionD_tiam_v3.json.gz",
+        flowBasePath: "data_Dtiam_v3/flows",
+        gz: true
       }
     };
+
+    const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM"];
 
     let META = null;
     let FEATURES = [];
     let FEATURE_AVG_BY_YEAR = [];
     let COUNTRY_FEATURES = {};
+    let TIAM_FEATURE_AVG_BY_YEAR = [];
+    let TIAM_COUNTRY_FEATURES = {};
+    let TIAM_FEATURES_AVAILABLE = false;
     let MODEL_SMALLS = {};
     let PAIR_CACHE = {};
 
@@ -591,10 +630,13 @@
     const modelD1El = document.getElementById("modelD1");
     const modelD2ZEl = document.getElementById("modelD2Z");
     const modelD246ENVEl = document.getElementById("modelD246ENV");
+    const modelDTIAMEl = document.getElementById("modelDTIAM");
 
     const indGDPEl = document.getElementById("indGDP");
     const indGDPCAPEl = document.getElementById("indGDPCAP");
     const indPOPPEl = document.getElementById("indPOP");
+    const indTIAMCO2El = document.getElementById("indTIAMCO2");
+    const indTIAMRENEWEl = document.getElementById("indTIAMRENEW");
 
     function setStatus(message) {
       statusEl.innerHTML = message;
@@ -831,6 +873,7 @@
       if (modelD1El.checked) selected.push("D1");
       if (modelD2ZEl.checked) selected.push("D2Z");
       if (modelD246ENVEl.checked) selected.push("D246ENV");
+      if (modelDTIAMEl.checked) selected.push("DTIAM");
       return selected;
     }
 
@@ -946,6 +989,53 @@
       return { avgSeries, countryMap };
     }
 
+    function buildTiamFeatureIndexes(rows) {
+      const avgMap = {};
+      const countryMap = {};
+
+      rows.forEach(r => {
+        const country = (r.country_iso3 || "").trim();
+        const year = Number(r.t);
+        if (!country || !Number.isFinite(year)) return;
+
+        const row = {
+          country_iso3: country,
+          t: year,
+          co2_pc: safeNum(r.co2_pc),
+          renew_energy_pct: safeNum(r.renew_energy_pct)
+        };
+
+        if (!countryMap[country]) countryMap[country] = [];
+        countryMap[country].push(row);
+
+        if (!avgMap[year]) {
+          avgMap[year] = { t: year, co2_sum: 0, co2_n: 0, renew_sum: 0, renew_n: 0 };
+        }
+        if (row.co2_pc !== null) {
+          avgMap[year].co2_sum += row.co2_pc;
+          avgMap[year].co2_n += 1;
+        }
+        if (row.renew_energy_pct !== null) {
+          avgMap[year].renew_sum += row.renew_energy_pct;
+          avgMap[year].renew_n += 1;
+        }
+      });
+
+      Object.keys(countryMap).forEach(country => {
+        countryMap[country].sort((a, b) => a.t - b.t);
+      });
+
+      const avgSeries = Object.values(avgMap)
+        .map(d => ({
+          t: d.t,
+          co2_pc: d.co2_n ? d.co2_sum / d.co2_n : null,
+          renew_energy_pct: d.renew_n ? d.renew_sum / d.renew_n : null
+        }))
+        .sort((a, b) => a.t - b.t);
+
+      return { avgSeries, countryMap };
+    }
+
     function compactToTradeHist(series) {
       if (!series || !Array.isArray(series.y) || !Array.isArray(series.v)) return [];
       return series.y.map((year, idx) => ({
@@ -1013,10 +1103,36 @@
       FEATURE_AVG_BY_YEAR = indexes.avgSeries;
       COUNTRY_FEATURES = indexes.countryMap;
 
-      for (const modelKey of ["D1", "D2Z", "D246ENV"]) {
+      for (const modelKey of GZ_MODEL_KEYS) {
         const cfg = MODEL_CONFIG[modelKey];
         const gzResult = await fetchJsonGz(cfg.smallPath);
         MODEL_SMALLS[modelKey] = gzResult.ok ? gzResult.data : null;
+      }
+
+      try {
+        const tiamRes = await fetch(TIAM_FEATURES_PATH, { cache: "no-store" });
+        if (tiamRes.ok) {
+          const tiamText = await tiamRes.text();
+          const tiamRows = csvToObjects(tiamText);
+          const tiamIdx = buildTiamFeatureIndexes(tiamRows);
+          TIAM_FEATURE_AVG_BY_YEAR = tiamIdx.avgSeries;
+          TIAM_COUNTRY_FEATURES = tiamIdx.countryMap;
+          TIAM_FEATURES_AVAILABLE = true;
+        }
+      } catch (err) {
+        console.warn("TIAM features file not available:", err);
+        TIAM_FEATURES_AVAILABLE = false;
+      }
+      syncTiamIndicatorState();
+    }
+
+    function syncTiamIndicatorState() {
+      const enabled = TIAM_FEATURES_AVAILABLE && modelDTIAMEl.checked;
+      indTIAMCO2El.disabled = !enabled;
+      indTIAMRENEWEl.disabled = !enabled;
+      if (!enabled) {
+        indTIAMCO2El.checked = false;
+        indTIAMRENEWEl.checked = false;
       }
     }
 
@@ -1186,8 +1302,15 @@
       return {
         gdp: indGDPEl.checked,
         gdpcap: indGDPCAPEl.checked,
-        pop: indPOPPEl.checked
+        pop: indPOPPEl.checked,
+        tiamCo2: indTIAMCO2El.checked && !indTIAMCO2El.disabled,
+        tiamRenew: indTIAMRENEWEl.checked && !indTIAMRENEWEl.disabled
       };
+    }
+
+    function getTiamCountryOrAverageSeries(countryCode) {
+      if (countryCode === "All") return TIAM_FEATURE_AVG_BY_YEAR;
+      return TIAM_COUNTRY_FEATURES[countryCode] || [];
     }
 
     function getCountryOrAverageSeries(countryCode) {
@@ -1238,6 +1361,21 @@
       if (selected.pop) {
         traces.push(buildIndicatorTrace(exporterSeries, "pop", `${expLabelBase} Pop`, "#7c3aed", "dash"));
         traces.push(buildIndicatorTrace(importerSeries, "pop", `${impLabelBase} Pop`, "#6d28d9", "dot"));
+      }
+
+      if (selected.tiamCo2 || selected.tiamRenew) {
+        const tiamExporterSeries = getTiamCountryOrAverageSeries(exporter);
+        const tiamImporterSeries = getTiamCountryOrAverageSeries(importer);
+
+        if (selected.tiamCo2) {
+          traces.push(buildIndicatorTrace(tiamExporterSeries, "co2_pc", `${expLabelBase} TIAM CO2/cap`, "#0e7490", "dash"));
+          traces.push(buildIndicatorTrace(tiamImporterSeries, "co2_pc", `${impLabelBase} TIAM CO2/cap`, "#155e75", "dot"));
+        }
+
+        if (selected.tiamRenew) {
+          traces.push(buildIndicatorTrace(tiamExporterSeries, "renew_energy_pct", `${expLabelBase} TIAM Renew %`, "#65a30d", "dash"));
+          traces.push(buildIndicatorTrace(tiamImporterSeries, "renew_energy_pct", `${impLabelBase} TIAM Renew %`, "#3f6212", "dot"));
+        }
       }
 
       return traces.filter(tr => tr.x.length && tr.y.length);
@@ -1335,14 +1473,22 @@
         );
 
         const selectedModelLabels = selectedModels.map(k => MODEL_CONFIG[k].label).join(", ");
+
+        const tiamScenario = selectedModels.includes("DTIAM")
+          ? (MODEL_SMALLS.DTIAM?.model?.tiam_scenario || MODEL_SMALLS.DTIAM?.tiam_scenario || null)
+          : null;
+        const scenarioText = tiamScenario
+          ? `<br>TIAM scenario: <strong>${tiamScenario}</strong>`
+          : "";
+
         const missingText = missing && missing.length
           ? `<br>Missing: <strong>${missing.join(" | ")}</strong>`
           : "";
 
         if (mode === "pair") {
-          setStatus(`Updated pair view: <strong>${exporter}</strong> → <strong>${importer}</strong> | <strong>${productLabel}</strong><br>Models: <strong>${selectedModelLabels}</strong>${missingText}`);
+          setStatus(`Updated pair view: <strong>${exporter}</strong> → <strong>${importer}</strong> | <strong>${productLabel}</strong><br>Models: <strong>${selectedModelLabels}</strong>${scenarioText}${missingText}`);
         } else if (mode === "summary") {
-          setStatus(`Updated summary view: <strong>${exporter}</strong> → <strong>${importer}</strong> | <strong>${productLabel}</strong><br>Models: <strong>${selectedModelLabels}</strong>${missingText}`);
+          setStatus(`Updated summary view: <strong>${exporter}</strong> → <strong>${importer}</strong> | <strong>${productLabel}</strong><br>Models: <strong>${selectedModelLabels}</strong>${scenarioText}${missingText}`);
         } else {
           setStatus(`No data found for: <strong>${exporter}</strong> → <strong>${importer}</strong> | <strong>${productLabel}</strong>${missingText}`);
         }
@@ -1361,10 +1507,14 @@
       modelD1El.checked = false;
       modelD2ZEl.checked = false;
       modelD246ENVEl.checked = false;
+      modelDTIAMEl.checked = false;
 
       indGDPEl.checked = false;
       indGDPCAPEl.checked = false;
       indPOPPEl.checked = false;
+      indTIAMCO2El.checked = false;
+      indTIAMRENEWEl.checked = false;
+      syncTiamIndicatorState();
 
       PAIR_CACHE = {};
       renderPlot();
@@ -1383,6 +1533,7 @@
 
     updateBtn.addEventListener("click", renderPlot);
     resetBtn.addEventListener("click", resetFilters);
+    modelDTIAMEl.addEventListener("change", syncTiamIndicatorState);
 
     init();
   </script>
