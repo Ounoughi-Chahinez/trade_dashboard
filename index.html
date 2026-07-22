@@ -989,6 +989,13 @@
       return { avgSeries, countryMap };
     }
 
+    // A hard 0 in the TIAM columns means "no value for this year", not a real
+    // measurement, so drop it and let the chart connect the remaining points.
+    function tiamValue(v) {
+      const n = safeNum(v);
+      return n === 0 ? null : n;
+    }
+
     function buildTiamFeatureIndexes(rows) {
       const avgMap = {};
       const countryMap = {};
@@ -1001,8 +1008,8 @@
         const row = {
           country_iso3: country,
           t: year,
-          co2_pc: safeNum(r.co2_pc),
-          renew_energy_pct: safeNum(r.renew_energy_pct)
+          co2_pc: tiamValue(r.co2_pc),
+          renew_energy_pct: tiamValue(r.renew_energy_pct)
         };
 
         if (!countryMap[country]) countryMap[country] = [];
@@ -1334,6 +1341,7 @@
           dash: dashStyle
         },
         opacity: 0.95,
+        connectgaps: true,
         hovertemplate: `%{x}<br>${label}: %{y:.3s}<extra></extra>`
       };
     }
