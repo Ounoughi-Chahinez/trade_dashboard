@@ -397,7 +397,7 @@
         <span class="badge">Historical BACI</span>
         <span class="badge">Forecasted trade paths</span>
         <span class="badge">Optional macro overlays</span>
-        <span class="badge">WB-TIAM scenarios</span>
+        <span class="badge">TIAM-ECN scenarios</span>
       </div>
     </section>
 
@@ -447,8 +447,13 @@
             </label>
 
             <label class="check-item">
-              <input type="checkbox" id="modelWBTIAM" />
-              <span>D.4 (Gravity PPML + RF with WB-TIAM features)</span>
+              <input type="checkbox" id="modelDTIAM" />
+              <span>D.4 (Gravity PPML + RF with TIAM-ECN features)</span>
+            </label>
+
+            <label class="check-item">
+              <input type="checkbox" id="modelANCHOR" />
+              <span>Anchor&ndash;Split (HS2 gravity &rarr; boosted HS6 shares, exact sum)</span>
             </label>
           </div>
 
@@ -477,19 +482,19 @@
 
             <label class="check-item">
               <input type="checkbox" id="indTIAMCO2" value="tiam_co2" disabled />
-              <span>WB-TIAM CO&#8322; per capita (D.4)</span>
+              <span>TIAM CO&#8322; per capita (D.4)</span>
             </label>
 
             <label class="check-item">
               <input type="checkbox" id="indTIAMRENEW" value="tiam_renew" disabled />
-              <span>WB-TIAM renewables share % (D.4)</span>
+              <span>TIAM renewables share % (D.4)</span>
             </label>
           </div>
 
           <div class="helper-text">
             <strong>All</strong> represents the average across countries by year.
-            WB-TIAM indicators are available when variant <strong>D.4</strong> is selected; they follow the
-            WB-TIAM scenario trajectory (downscaled CO&#8322;, renewable share of primary energy).
+            TIAM indicators are available when variant <strong>D.4</strong> is selected; they follow the
+            TIAM-ECN scenario trajectory (downscaled CO&#8322;, renewable share of primary energy).
           </div>
         </div>
 
@@ -530,10 +535,48 @@
           </p>
           <p>
             Variant <strong>D.4</strong> uses a gravity PPML baseline (GDP per capita, population, distance, product
-            fixed effects) corrected by a Random Forest using <strong>WB-TIAM</strong> features. These combine
-            World Bank-aligned country-level macroeconomic inputs with TIAM energy-system indicators, including
-            CO₂ emissions per capita and renewable-energy shares. The future series are provided at country level
-            and interpolated to the annual/forecast frequency used by the dashboard.
+            fixed effects) corrected by a Random Forest whose features come from the <strong>TIAM-ECN</strong>
+            energy-system model: country-level CO₂ emissions and renewable energy shares, downscaled from TIAM's
+            36 world regions to individual countries and interpolated to annual frequency. The displayed run uses
+            <strong>Scenario 1</strong>; the underlying data supports all six TIAM scenarios.
+          </p>
+          <p>
+            The <strong>Anchor&ndash;Split</strong> variant builds the forecast in three
+            steps that separate <em>how much</em> trade there is from <em>what products</em>
+            it is made of:
+          </p>
+          <ol style="margin:0.25rem 0 0.5rem 1.1rem; padding:0; line-height:1.55;">
+            <li>
+              <strong>Anchor &mdash; total trade at HS2.</strong> A gravity PPML model,
+              one per HS2 chapter, sets the total trade for each exporter&ndash;importer
+              pair. Features: exporter and importer <strong>GDP</strong> (entered together
+              with the elasticity fixed at&nbsp;1, so trade grows with the economy rather
+              than faster), <strong>distance</strong>, and a <strong>damped time trend</strong>
+              capturing the recent slowdown in trade intensity. This total is economically
+              defensible and, once set, is never changed.
+            </li>
+            <li>
+              <strong>Split &mdash; product shares within HS2.</strong> A gradient-boosted
+              tree model predicts each HS6 line&rsquo;s share of its chapter. Features:
+              the pair&rsquo;s own <strong>historical share</strong> of that line and the
+              <strong>worldwide share</strong> of it (the two strongest signals), the
+              number of lines the chapter splits into, exporter and importer
+              <strong>CO&#8322;</strong> from the TIAM-ECN energy scenario,
+              <strong>GDP per capita</strong>, <strong>population</strong>, and
+              <strong>distance</strong>.
+            </li>
+            <li>
+              <strong>Rescale &mdash; exact adding-up.</strong> The predicted HS6 values
+              are divided by their chapter sum and multiplied by the HS2 anchor, so they
+              add up to it exactly. The product mix can shift with the CO&#8322; scenario,
+              but the world total stays fixed by step&nbsp;1.
+            </li>
+          </ol>
+          <p style="margin-top:0.4rem;">
+            In short: <strong>GDP and distance set the level</strong>, while
+            <strong>history and CO&#8322; set the composition</strong>. Because the
+            shares are rescaled to the HS2 anchor, the energy scenario reshapes which
+            products a chapter contains without inflating overall trade growth.
           </p>
           <p>
             Future feature series are anchored at the country level using <strong>2015</strong> as the anchor year.
@@ -561,7 +604,7 @@
     const META_PATH = "trade_dashboard_meta.json";
     const SMALL_PATH_A = "trade_dashboard_small.json";
     const FEATURES_PATH = "features.csv";
-    const WBTIAM_FEATURES_PATH = "features_optionD_wbtiam_v2.csv";
+    const TIAM_FEATURES_PATH = "features_optionD_tiam_v2.csv";
     const TRADE_SCALE = 1000;
 
     const MODEL_CONFIG = {
@@ -597,24 +640,32 @@
         gz: true
       },
 
-      WBTIAM: {
-        label: "D.4 (WB-TIAM)",
+      DTIAM: {
+        label: "D.4 (TIAM)",
         color: "#0891b2",
-        smallPath: "trade_dashboard_small_optionD_wbtiam_v2.json.gz",
-        flowBasePath: "data_Dwbtiam_v2/flows",
+        smallPath: "trade_dashboard_small_optionD_tiam_v2.json.gz",
+        flowBasePath: "data_Dtiam_v2/flows",
+        gz: true
+      },
+
+      ANCHOR: {
+        label: "Anchor–Split",
+        color: "#c2410c",
+        smallPath: "trade_dashboard_small_step12_hs2rf.json.gz",
+        flowBasePath: "data_step12/flows",
         gz: true
       }
     };
 
-    const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "WBTIAM"];
+    const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM", "ANCHOR"];
 
     let META = null;
     let FEATURES = [];
     let FEATURE_AVG_BY_YEAR = [];
     let COUNTRY_FEATURES = {};
-    let WBTIAM_FEATURE_AVG_BY_YEAR = [];
-    let WBTIAM_COUNTRY_FEATURES = {};
-    let WBTIAM_FEATURES_AVAILABLE = false;
+    let TIAM_FEATURE_AVG_BY_YEAR = [];
+    let TIAM_COUNTRY_FEATURES = {};
+    let TIAM_FEATURES_AVAILABLE = false;
     let MODEL_SMALLS = {};
     let PAIR_CACHE = {};
 
@@ -630,7 +681,8 @@
     const modelD1El = document.getElementById("modelD1");
     const modelD2ZEl = document.getElementById("modelD2Z");
     const modelD246ENVEl = document.getElementById("modelD246ENV");
-    const modelWBTIAMEl = document.getElementById("modelWBTIAM");
+    const modelDTIAMEl = document.getElementById("modelDTIAM");
+    const modelANCHOREl = document.getElementById("modelANCHOR");
 
     const indGDPEl = document.getElementById("indGDP");
     const indGDPCAPEl = document.getElementById("indGDPCAP");
@@ -873,7 +925,8 @@
       if (modelD1El.checked) selected.push("D1");
       if (modelD2ZEl.checked) selected.push("D2Z");
       if (modelD246ENVEl.checked) selected.push("D246ENV");
-      if (modelWBTIAMEl.checked) selected.push("WBTIAM");
+      if (modelDTIAMEl.checked) selected.push("DTIAM");
+      if (modelANCHOREl.checked) selected.push("ANCHOR");
       return selected;
     }
 
@@ -989,14 +1042,14 @@
       return { avgSeries, countryMap };
     }
 
-    // A hard 0 in the WB-TIAM columns means "no value for this year", not a real
+    // A hard 0 in the TIAM columns means "no value for this year", not a real
     // measurement, so drop it and let the chart connect the remaining points.
-    function wbTiamValue(v) {
+    function tiamValue(v) {
       const n = safeNum(v);
       return n === 0 ? null : n;
     }
 
-    function buildWbTiamFeatureIndexes(rows) {
+    function buildTiamFeatureIndexes(rows) {
       const avgMap = {};
       const countryMap = {};
 
@@ -1008,8 +1061,8 @@
         const row = {
           country_iso3: country,
           t: year,
-          co2_pc: wbTiamValue(r.co2_pc),
-          renew_energy_pct: wbTiamValue(r.renew_energy_pct)
+          co2_pc: tiamValue(r.co2_pc),
+          renew_energy_pct: tiamValue(r.renew_energy_pct)
         };
 
         if (!countryMap[country]) countryMap[country] = [];
@@ -1117,24 +1170,24 @@
       }
 
       try {
-        const wbTiamRes = await fetch(WBTIAM_FEATURES_PATH, { cache: "no-store" });
-        if (wbTiamRes.ok) {
-          const wbTiamText = await wbTiamRes.text();
-          const wbTiamRows = csvToObjects(wbTiamText);
-          const wbTiamIdx = buildWbTiamFeatureIndexes(wbTiamRows);
-          WBTIAM_FEATURE_AVG_BY_YEAR = wbTiamIdx.avgSeries;
-          WBTIAM_COUNTRY_FEATURES = wbTiamIdx.countryMap;
-          WBTIAM_FEATURES_AVAILABLE = true;
+        const tiamRes = await fetch(TIAM_FEATURES_PATH, { cache: "no-store" });
+        if (tiamRes.ok) {
+          const tiamText = await tiamRes.text();
+          const tiamRows = csvToObjects(tiamText);
+          const tiamIdx = buildTiamFeatureIndexes(tiamRows);
+          TIAM_FEATURE_AVG_BY_YEAR = tiamIdx.avgSeries;
+          TIAM_COUNTRY_FEATURES = tiamIdx.countryMap;
+          TIAM_FEATURES_AVAILABLE = true;
         }
       } catch (err) {
-        console.warn("WB-TIAM features file not available:", err);
-        WBTIAM_FEATURES_AVAILABLE = false;
+        console.warn("TIAM features file not available:", err);
+        TIAM_FEATURES_AVAILABLE = false;
       }
-      syncWbTiamIndicatorState();
+      syncTiamIndicatorState();
     }
 
-    function syncWbTiamIndicatorState() {
-      const enabled = WBTIAM_FEATURES_AVAILABLE && modelWBTIAMEl.checked;
+    function syncTiamIndicatorState() {
+      const enabled = TIAM_FEATURES_AVAILABLE && modelDTIAMEl.checked;
       indTIAMCO2El.disabled = !enabled;
       indTIAMRENEWEl.disabled = !enabled;
       if (!enabled) {
@@ -1315,9 +1368,9 @@
       };
     }
 
-    function getWbTiamCountryOrAverageSeries(countryCode) {
-      if (countryCode === "All") return WBTIAM_FEATURE_AVG_BY_YEAR;
-      return WBTIAM_COUNTRY_FEATURES[countryCode] || [];
+    function getTiamCountryOrAverageSeries(countryCode) {
+      if (countryCode === "All") return TIAM_FEATURE_AVG_BY_YEAR;
+      return TIAM_COUNTRY_FEATURES[countryCode] || [];
     }
 
     function getCountryOrAverageSeries(countryCode) {
@@ -1372,17 +1425,17 @@
       }
 
       if (selected.tiamCo2 || selected.tiamRenew) {
-        const wbTiamExporterSeries = getWbTiamCountryOrAverageSeries(exporter);
-        const wbTiamImporterSeries = getWbTiamCountryOrAverageSeries(importer);
+        const tiamExporterSeries = getTiamCountryOrAverageSeries(exporter);
+        const tiamImporterSeries = getTiamCountryOrAverageSeries(importer);
 
         if (selected.tiamCo2) {
-          traces.push(buildIndicatorTrace(wbTiamExporterSeries, "co2_pc", `${expLabelBase} WB-TIAM CO2/cap`, "#0e7490", "dash"));
-          traces.push(buildIndicatorTrace(wbTiamImporterSeries, "co2_pc", `${impLabelBase} WB-TIAM CO2/cap`, "#155e75", "dot"));
+          traces.push(buildIndicatorTrace(tiamExporterSeries, "co2_pc", `${expLabelBase} TIAM CO2/cap`, "#0e7490", "dash"));
+          traces.push(buildIndicatorTrace(tiamImporterSeries, "co2_pc", `${impLabelBase} TIAM CO2/cap`, "#155e75", "dot"));
         }
 
         if (selected.tiamRenew) {
-          traces.push(buildIndicatorTrace(wbTiamExporterSeries, "renew_energy_pct", `${expLabelBase} WB-TIAM Renew %`, "#65a30d", "dash"));
-          traces.push(buildIndicatorTrace(wbTiamImporterSeries, "renew_energy_pct", `${impLabelBase} WB-TIAM Renew %`, "#3f6212", "dot"));
+          traces.push(buildIndicatorTrace(tiamExporterSeries, "renew_energy_pct", `${expLabelBase} TIAM Renew %`, "#65a30d", "dash"));
+          traces.push(buildIndicatorTrace(tiamImporterSeries, "renew_energy_pct", `${impLabelBase} TIAM Renew %`, "#3f6212", "dot"));
         }
       }
 
@@ -1482,11 +1535,11 @@
 
         const selectedModelLabels = selectedModels.map(k => MODEL_CONFIG[k].label).join(", ");
 
-        const wbTiamScenario = selectedModels.includes("WBTIAM")
-          ? (MODEL_SMALLS.WBTIAM?.model?.tiam_scenario || MODEL_SMALLS.WBTIAM?.tiam_scenario || null)
+        const tiamScenario = selectedModels.includes("DTIAM")
+          ? (MODEL_SMALLS.DTIAM?.model?.tiam_scenario || MODEL_SMALLS.DTIAM?.tiam_scenario || null)
           : null;
-        const scenarioText = wbTiamScenario
-          ? `<br>WB-TIAM scenario: <strong>${wbTiamScenario}</strong>`
+        const scenarioText = tiamScenario
+          ? `<br>TIAM scenario: <strong>${tiamScenario}</strong>`
           : "";
 
         const missingText = missing && missing.length
@@ -1515,14 +1568,15 @@
       modelD1El.checked = false;
       modelD2ZEl.checked = false;
       modelD246ENVEl.checked = false;
-      modelWBTIAMEl.checked = false;
+      modelDTIAMEl.checked = false;
+      modelANCHOREl.checked = false;
 
       indGDPEl.checked = false;
       indGDPCAPEl.checked = false;
       indPOPPEl.checked = false;
       indTIAMCO2El.checked = false;
       indTIAMRENEWEl.checked = false;
-      syncWbTiamIndicatorState();
+      syncTiamIndicatorState();
 
       PAIR_CACHE = {};
       renderPlot();
@@ -1541,7 +1595,7 @@
 
     updateBtn.addEventListener("click", renderPlot);
     resetBtn.addEventListener("click", resetFilters);
-    modelWBTIAMEl.addEventListener("change", syncWbTiamIndicatorState);
+    modelDTIAMEl.addEventListener("change", syncTiamIndicatorState);
 
     init();
   </script>
