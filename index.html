@@ -455,6 +455,11 @@
               <input type="checkbox" id="modelANCHOR" />
               <span>Anchor&ndash;Split (HS2 gravity &rarr; boosted HS6 shares, exact sum)</span>
             </label>
+
+            <label class="check-item">
+              <input type="checkbox" id="modelDWBTIAM" />
+              <span>D.5 (WB-trained / TIAM-projected CO&#8322;)</span>
+            </label>
           </div>
 
           <div class="helper-text">
@@ -579,6 +584,16 @@
             products a chapter contains without inflating overall trade growth.
           </p>
           <p>
+            Variant <strong>D.5 (WB-trained / TIAM-projected CO&#8322;)</strong> keeps the
+            earlier HS2&rarr;HS4&rarr;HS6 correction structure but changes the CO&#8322;
+            feature: the model is <strong>trained on World Bank measured CO&#8322;</strong>
+            per capita over 2012&ndash;2024 and <strong>projected with the TIAM-ECN
+            scenario</strong> path from 2025 onwards, both expressed per capita so the
+            feature is consistent across the join. Each country&rsquo;s future TIAM path is
+            optionally anchored to its 2024 World Bank level, preserving the scenario&rsquo;s
+            shape while keeping levels on the measured scale the model learned from.
+          </p>
+          <p>
             Future feature series are anchored at the country level using <strong>2015</strong> as the anchor year.
             Monetary values are displayed in <strong>constant 2015 USD</strong>.
           </p>
@@ -657,10 +672,18 @@
         smallPath: "trade_dashboard_small_step12_hs2rf.json.gz",
         flowBasePath: "data_step12/flows",
         gz: true
+      },
+
+      DWBTIAM: {
+        label: "D.5 (WB/TIAM)",
+        color: "#7c3aed",
+        smallPath: "trade_dashboard_small_optionD_wbtiam_v2.json.gz",
+        flowBasePath: "data_Dwbtiam_v2/flows",
+        gz: true
       }
     };
 
-    const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM", "ANCHOR"];
+    const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM", "ANCHOR", "DWBTIAM"];
 
     let META = null;
     let FEATURES = [];
@@ -686,6 +709,7 @@
     const modelD246ENVEl = document.getElementById("modelD246ENV");
     const modelDTIAMEl = document.getElementById("modelDTIAM");
     const modelANCHOREl = document.getElementById("modelANCHOR");
+    const modelDWBTIAMEl = document.getElementById("modelDWBTIAM");
 
     const indGDPEl = document.getElementById("indGDP");
     const indGDPCAPEl = document.getElementById("indGDPCAP");
@@ -930,6 +954,7 @@
       if (modelD246ENVEl.checked) selected.push("D246ENV");
       if (modelDTIAMEl.checked) selected.push("DTIAM");
       if (modelANCHOREl.checked) selected.push("ANCHOR");
+      if (modelDWBTIAMEl.checked) selected.push("DWBTIAM");
       return selected;
     }
 
@@ -1196,7 +1221,7 @@
 
     function syncTiamIndicatorState() {
       const enabled = TIAM_FEATURES_AVAILABLE &&
-        (modelDTIAMEl.checked || modelANCHOREl.checked);
+        (modelDTIAMEl.checked || modelANCHOREl.checked || modelDWBTIAMEl.checked);
       indTIAMCO2El.disabled = !enabled;
       indTIAMRENEWEl.disabled = !enabled;
       if (!enabled) {
@@ -1579,6 +1604,7 @@
       modelD246ENVEl.checked = false;
       modelDTIAMEl.checked = false;
       modelANCHOREl.checked = false;
+      modelDWBTIAMEl.checked = false;
 
       indGDPEl.checked = false;
       indGDPCAPEl.checked = false;
@@ -1606,6 +1632,7 @@
     resetBtn.addEventListener("click", resetFilters);
     modelDTIAMEl.addEventListener("change", syncTiamIndicatorState);
     modelANCHOREl.addEventListener("change", syncTiamIndicatorState);
+    modelDWBTIAMEl.addEventListener("change", syncTiamIndicatorState);
 
     init();
   </script>
