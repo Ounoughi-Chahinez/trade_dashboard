@@ -482,18 +482,18 @@
 
             <label class="check-item">
               <input type="checkbox" id="indTIAMCO2" value="tiam_co2" disabled />
-              <span>TIAM CO&#8322; per capita (D.4)</span>
+              <span>TIAM CO&#8322; per capita (D.4 / Anchor&ndash;Split)</span>
             </label>
 
             <label class="check-item">
               <input type="checkbox" id="indTIAMRENEW" value="tiam_renew" disabled />
-              <span>TIAM renewables share % (D.4)</span>
+              <span>TIAM renewables share % (D.4 / Anchor&ndash;Split)</span>
             </label>
           </div>
 
           <div class="helper-text">
             <strong>All</strong> represents the average across countries by year.
-            TIAM indicators are available when variant <strong>D.4</strong> is selected; they follow the
+            TIAM indicators are available when <strong>D.4</strong> or <strong>Anchor&ndash;Split</strong> is selected; they follow the
             TIAM-ECN scenario trajectory (downscaled CO&#8322;, renewable share of primary energy).
           </div>
         </div>
@@ -605,6 +605,9 @@
     const SMALL_PATH_A = "trade_dashboard_small.json";
     const FEATURES_PATH = "features.csv";
     const TIAM_FEATURES_PATH = "features_optionD_tiam_v2.csv";
+    // Anchor-Split ships its own feature file (wider country coverage);
+    // prefer it, fall back to the D.4 file if absent.
+    const ANCHOR_FEATURES_PATH = "features_step12_hs2rf.csv";
     const TRADE_SCALE = 1000;
 
     const MODEL_CONFIG = {
@@ -1169,25 +1172,31 @@
         MODEL_SMALLS[modelKey] = gzResult.ok ? gzResult.data : null;
       }
 
-      try {
-        const tiamRes = await fetch(TIAM_FEATURES_PATH, { cache: "no-store" });
-        if (tiamRes.ok) {
-          const tiamText = await tiamRes.text();
-          const tiamRows = csvToObjects(tiamText);
-          const tiamIdx = buildTiamFeatureIndexes(tiamRows);
-          TIAM_FEATURE_AVG_BY_YEAR = tiamIdx.avgSeries;
-          TIAM_COUNTRY_FEATURES = tiamIdx.countryMap;
-          TIAM_FEATURES_AVAILABLE = true;
+      // load the indicator feature series (CO2 / renewables). Prefer the
+      // Anchor-Split file for its wider country coverage; fall back to the
+      // D.4 file. Both carry the same TIAM scenario columns.
+      for (const path of [ANCHOR_FEATURES_PATH, TIAM_FEATURES_PATH]) {
+        try {
+          const res = await fetch(path, { cache: "no-store" });
+          if (!res.ok) continue;
+          const rows = csvToObjects(await res.text());
+          const idx = buildTiamFeatureIndexes(rows);
+          if (idx.avgSeries.length) {
+            TIAM_FEATURE_AVG_BY_YEAR = idx.avgSeries;
+            TIAM_COUNTRY_FEATURES = idx.countryMap;
+            TIAM_FEATURES_AVAILABLE = true;
+            break;
+          }
+        } catch (err) {
+          console.warn("indicator features not available at", path, err);
         }
-      } catch (err) {
-        console.warn("TIAM features file not available:", err);
-        TIAM_FEATURES_AVAILABLE = false;
       }
       syncTiamIndicatorState();
     }
 
     function syncTiamIndicatorState() {
-      const enabled = TIAM_FEATURES_AVAILABLE && modelDTIAMEl.checked;
+      const enabled = TIAM_FEATURES_AVAILABLE &&
+        (modelDTIAMEl.checked || modelANCHOREl.checked);
       indTIAMCO2El.disabled = !enabled;
       indTIAMRENEWEl.disabled = !enabled;
       if (!enabled) {
@@ -1596,6 +1605,7 @@
     updateBtn.addEventListener("click", renderPlot);
     resetBtn.addEventListener("click", resetFilters);
     modelDTIAMEl.addEventListener("change", syncTiamIndicatorState);
+    modelANCHOREl.addEventListener("change", syncTiamIndicatorState);
 
     init();
   </script>
