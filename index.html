@@ -696,7 +696,47 @@
       }
     };
 
-    const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM", "ANCHOR", "DWBTIAM", "RECDENS"];
+        // ---- Marek's analytical groups: aggregated in-browser from HS6 series ----
+    // hs2(k) = first two digits; some rules use a specific HS6 or HS4 prefix.
+    const ANALYTICAL_GROUPS = {
+      grp_fuels:  { label: "Fuels & feedstocks (HS 27)",       test: k => k.slice(0,2) === "27" },
+      grp_chem:   { label: "Chemicals & plastics (HS 28-40)",  test: k => { const c = +k.slice(0,2); return c >= 28 && c <= 40; } },
+      grp_steel:  { label: "Steel (HS 72-73)",                 test: k => k.slice(0,2) === "72" || k.slice(0,2) === "73" },
+      grp_cement: { label: "Cement (HS 2523)",                 test: k => k.slice(0,4) === "2523" },
+      grp_glass:  { label: "Glass (HS 70)",                    test: k => k.slice(0,2) === "70" },
+      grp_paper:  { label: "Paper, pulp & print (HS 47-49)",   test: k => { const c = +k.slice(0,2); return c >= 47 && c <= 49; } },
+      grp_alu:    { label: "Aluminium (HS 76 + 260600)",       test: k => k.slice(0,2) === "76" || k.slice(0,6) === "260600" },
+      grp_copper: { label: "Copper (HS 74 + 260300)",          test: k => k.slice(0,2) === "74" || k.slice(0,6) === "260300" }
+    };
+
+    function isGroup(prod) { return typeof prod === "string" && prod.indexOf("grp_") === 0; }
+
+    // sum a list of compact {y,v} series into one, aligning by year
+    function sumCompactSeries(seriesList) {
+      const acc = {};
+      for (const s of seriesList) {
+        if (!s || !Array.isArray(s.y)) continue;
+        for (let i = 0; i < s.y.length; i++) {
+          const yr = Number(s.y[i]);
+          acc[yr] = (acc[yr] || 0) + Number(s.v[i] || 0);
+        }
+      }
+      const years = Object.keys(acc).map(Number).sort((a, b) => a - b);
+      return { y: years, v: years.map(yr => acc[yr]) };
+    }
+
+    // from a product-keyed map { hs6: {y,v} }, sum the members of a group
+    function aggregateGroupFromProductMap(productMap, groupId) {
+      if (!productMap) return { y: [], v: [] };
+      const test = ANALYTICAL_GROUPS[groupId].test;
+      const members = Object.keys(productMap).filter(k => {
+        const kk = String(k).padStart(6, "0");
+        return test(kk);
+      });
+      return sumCompactSeries(members.map(k => productMap[k]));
+    }
+
+const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM", "ANCHOR", "DWBTIAM", "RECDENS"];
 
     let META = null;
     let FEATURES = [];
@@ -930,10 +970,18 @@
     function initDropdowns() {
       const exporterItems = (META.exporters || ["All"]).map(v => ({ value: v, label: v }));
       const importerItems = (META.importers || ["All"]).map(v => ({ value: v, label: v }));
-      const productItems = (META.products || [{ k: "All", label: "All" }]).map(p => ({
+      const baseProductItems = (META.products || [{ k: "All", label: "All" }]).map(p => ({
         value: p.k,
         label: p.label
       }));
+      // inject Marek's analytical groups just below "All"
+      const groupItems = Object.keys(ANALYTICAL_GROUPS).map(gid => ({
+        value: gid,
+        label: "▸ " + ANALYTICAL_GROUPS[gid].label
+      }));
+      const productItems = baseProductItems.length
+        ? [baseProductItems[0], ...groupItems, ...baseProductItems.slice(1)]
+        : groupItems;
 
       exporterDD = createSearchableDropdown({
         mountId: "exporterDropdown",
@@ -1281,6 +1329,10 @@
         return compactToTradeHist(small.importer?.hist?.[importer]);
       }
 
+      if (exporter === "All" && importer === "All" && isGroup(product)) {
+        return compactToTradeHist(aggregateGroupFromProductMap(small.product?.hist, product));
+      }
+
       if (exporter === "All" && importer === "All" && product !== "All") {
         return compactToTradeHist(small.product?.hist?.[String(product)]);
       }
@@ -1303,11 +1355,52 @@
         return compactToTradeForecast(modelSmall.importer?.corr?.[importer]);
       }
 
+      if (exporter === "All" && importer === "All" && isGroup(product)) {
+        return compactToTradeForecast(aggregateGroupFromProductMap(modelSmall.product?.corr, product));
+      }
+
       if (exporter === "All" && importer === "All" && product !== "All") {
         return compactToTradeForecast(modelSmall.product?.corr?.[String(product)]);
       }
 
       return [];
+    }
+
+    // Extract hist/forecast arrays for a product OR group from one pair file object.
+    function pairSeriesForProduct(pairData, product) {
+      if (!pairData || pairData.__missing) return { hist: [], forecast: [] };
+      if (product === "All") {
+        return { hist: compactToTradeHist(pairData.h), forecast: compactToTradeForecast(pairData.c) };
+      }
+      if (isGroup(product)) {
+        const h = aggregateGroupFromProductMap(
+          Object.fromEntries(Object.entries(pairData.p || {}).map(([k, v]) => [k, v.h])), product);
+        const c = aggregateGroupFromProductMap(
+          Object.fromEntries(Object.entries(pairData.p || {}).map(([k, v]) => [k, v.c])), product);
+        return { hist: compactToTradeHist(h), forecast: compactToTradeForecast(c) };
+      }
+      const entry = pairData.p?.[String(product)];
+      if (entry) return { hist: compactToTradeHist(entry.h), forecast: compactToTradeForecast(entry.c) };
+      return { hist: [], forecast: [] };
+    }
+
+    // Exporter -> world (destination = All) for a specific product/group, by summing
+    // that exporter's pair files across all importers. Cached per model+exporter+product.
+    async function exporterToWorldForProduct(modelKey, exporter, product) {
+      const histParts = [];
+      const forecastParts = [];
+      const importers = (META.importers || []).filter(x => x !== "All");
+      await Promise.all(importers.map(async imp => {
+        const pairData = await loadPairFileForModel(modelKey, exporter, imp);
+        if (!pairData || pairData.__missing) return;
+        const { hist, forecast } = pairSeriesForProduct(pairData, product);
+        if (hist.length) histParts.push({ y: hist.map(d => d.t), v: hist.map(d => d.value) });
+        if (forecast.length) forecastParts.push({ y: forecast.map(d => d.t), v: forecast.map(d => d.pred_v2015) });
+      }));
+      return {
+        hist: compactToTradeHist(sumCompactSeries(histParts)),
+        forecast: compactToTradeForecast(sumCompactSeries(forecastParts))
+      };
     }
 
     async function getSelectedSeries() {
@@ -1355,6 +1448,28 @@
         return { hist, forecasts, mode: "summary", missing };
       }
 
+      // Exporter -> world for a specific product or analytical group (Marek's PS):
+      // not in the summary file, so sum the exporter's pair files across importers.
+      if (exporter !== "All" && importer === "All" && product !== "All") {
+        let histWorld = [];
+        for (const modelKey of selectedModels) {
+          const { hist: hW, forecast } = await exporterToWorldForProduct(modelKey, exporter, product);
+          if (!histWorld.length && hW.length) histWorld = hW;
+          const forecastSeries = addConnector(hW.length ? hW : histWorld, forecast);
+          if (forecastSeries.length) {
+            forecasts.push({
+              modelKey,
+              label: MODEL_CONFIG[modelKey].label,
+              color: MODEL_CONFIG[modelKey].color,
+              series: forecastSeries
+            });
+          } else {
+            missing.push(`${MODEL_CONFIG[modelKey].label} exporter-to-world`);
+          }
+        }
+        return { hist: histWorld, forecasts, mode: "exporter-world", missing };
+      }
+
       if (exporter !== "All" && importer !== "All") {
         let histFromPair = [];
 
@@ -1369,16 +1484,9 @@
           let modelHist = [];
           let modelForecast = [];
 
-          if (product === "All") {
-            modelHist = compactToTradeHist(pairData.h);
-            modelForecast = compactToTradeForecast(pairData.c);
-          } else {
-            const entry = pairData.p?.[String(product)];
-            if (entry) {
-              modelHist = compactToTradeHist(entry.h);
-              modelForecast = compactToTradeForecast(entry.c);
-            }
-          }
+          const picked = pairSeriesForProduct(pairData, product);
+          modelHist = picked.hist;
+          modelForecast = picked.forecast;
 
           if (!histFromPair.length && modelHist.length) {
             histFromPair = modelHist;
@@ -1595,7 +1703,9 @@
           ? `<br>Missing: <strong>${missing.join(" | ")}</strong>`
           : "";
 
-        if (mode === "pair") {
+        if (mode === "exporter-world") {
+          setStatus(`Exports to the world: <strong>${exporter}</strong> &rarr; <strong>All</strong> | <strong>${productLabel}</strong><br>Models: <strong>${selectedModelLabels}</strong>${scenarioText}${missingText}`);
+        } else if (mode === "pair") {
           setStatus(`Updated pair view: <strong>${exporter}</strong> → <strong>${importer}</strong> | <strong>${productLabel}</strong><br>Models: <strong>${selectedModelLabels}</strong>${scenarioText}${missingText}`);
         } else if (mode === "summary") {
           setStatus(`Updated summary view: <strong>${exporter}</strong> → <strong>${importer}</strong> | <strong>${productLabel}</strong><br>Models: <strong>${selectedModelLabels}</strong>${scenarioText}${missingText}`);
