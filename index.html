@@ -465,6 +465,11 @@
               <input type="checkbox" id="modelRECDENS" />
               <span>Recursive density (HS2 anchor &rarr; relatedness-density HS6)</span>
             </label>
+
+            <label class="check-item">
+              <input type="checkbox" id="modelTWOCHAN" />
+              <span>Two-channel green (persistence + CO&#8322;&times;exposure residual)</span>
+            </label>
           </div>
 
           <div class="helper-text">
@@ -693,6 +698,14 @@
         smallPath: "trade_dashboard_small_recdens.json.gz",
         flowBasePath: "data_recdens/flows",
         gz: true
+      },
+
+      TWOCHAN: {
+        label: "Two-channel green",
+        color: "#15803d",
+        smallPath: "trade_dashboard_small_twochan.json.gz",
+        flowBasePath: "data_twochan/flows",
+        gz: true
       }
     };
 
@@ -736,7 +749,7 @@
       return sumCompactSeries(members.map(k => productMap[k]));
     }
 
-const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM", "ANCHOR", "DWBTIAM", "RECDENS"];
+const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM", "ANCHOR", "DWBTIAM", "RECDENS", "TWOCHAN"];
 
     let META = null;
     let FEATURES = [];
@@ -764,6 +777,7 @@ const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM", "ANCHOR", "DWBTIAM", "RE
     const modelANCHOREl = document.getElementById("modelANCHOR");
     const modelDWBTIAMEl = document.getElementById("modelDWBTIAM");
     const modelRECDENSEl = document.getElementById("modelRECDENS");
+    const modelTWOCHANEl = document.getElementById("modelTWOCHAN");
 
     const indGDPEl = document.getElementById("indGDP");
     const indGDPCAPEl = document.getElementById("indGDPCAP");
@@ -1018,6 +1032,7 @@ const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM", "ANCHOR", "DWBTIAM", "RE
       if (modelANCHOREl.checked) selected.push("ANCHOR");
       if (modelDWBTIAMEl.checked) selected.push("DWBTIAM");
       if (modelRECDENSEl.checked) selected.push("RECDENS");
+      if (modelTWOCHANEl.checked) selected.push("TWOCHAN");
       return selected;
     }
 
@@ -1731,6 +1746,7 @@ const GZ_MODEL_KEYS = ["D1", "D2Z", "D246ENV", "DTIAM", "ANCHOR", "DWBTIAM", "RE
       modelANCHOREl.checked = false;
       modelDWBTIAMEl.checked = false;
       modelRECDENSEl.checked = false;
+      modelTWOCHANEl.checked = false;
 
       indGDPEl.checked = false;
       indGDPCAPEl.checked = false;
